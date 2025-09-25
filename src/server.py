@@ -34,7 +34,7 @@ async def login(data: dict):
 
         uid = idinfo["sub"]          # unique Google user ID
         email = idinfo.get("email")
-        name = idinfo.get("name", "")
+        name = idinfo.get("name", "") # creates username as google name
 
         # Check Firestore for user profile
         user_ref = db.collection("users").document(uid)
