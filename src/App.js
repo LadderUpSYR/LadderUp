@@ -1,23 +1,27 @@
-import logo from './logo.svg';
+// src/App.js
 import './App.css';
+import LoginForm from './components/LoginForm';
 
 function App() {
+  const handleLogin = async ({ email, password, remember }) => {
+    // TODO: call your backend here
+    console.log('login:', { email, password, remember });
+  };
+
+  const handleOAuth = async (provider) => {
+    // TODO: start your OAuth flow here
+    console.log('oauth provider:', provider);
+  };
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+      <LoginForm
+        onLogin={handleLogin}
+        onOAuth={handleOAuth}
+        forgotHref="/forgot-password"   // optional
+        title="Welcome back"
+        subtitle="Sign in to continue"
+      />
     </div>
   );
 }
