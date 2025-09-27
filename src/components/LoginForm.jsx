@@ -164,20 +164,36 @@ export default function LoginForm({
                   aria-label={showPw ? "Hide password" : "Show password"}
                 >
                   {showPw ? (
-                    // eye-off
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-                      <path
-                        fill="currentColor"
-                        d="M12 6.5c-4.5 0-7.7 3-9.5 5.5 1 1.5 2.4 3 4.2 4.1l-1.4 1.4 1.4 1.4L20.5 4.2 19.1 2.8 15.8 6A10.7 10.7 0 0 0 12 6.5Zm0 3a3 3 0 0 1 3 3l-1.2 1.2A1.8 1.8 0 0 0 12 12.5c-1 0-1.8.8-1.8 1.8 0 .4.1.7.3 1L8.7 16A3.8 3.8 0 0 1 8.2 14.3 3.8 3.8 0 0 1 12 9.5Z"
-                      />
+                    // eye-off (outline)
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 15.254 6.3 17.75 10.5 17.95" />
+                      <path d="M20.489 15.232A10.45 10.45 0 0022.066 12C20.773 8.746 17.71 6.25 13.5 6.05" />
+                      <path d="M9.88 9.88a3 3 0 104.24 4.24" />
+                      <path d="M3 3l18 18" />
                     </svg>
                   ) : (
-                    // eye
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-                      <path
-                        fill="currentColor"
-                        d="M12 6.5c4.5 0 7.7 3 9.5 5.5-1.8 2.5-5 5.5-9.5 5.5S4.3 14.5 2.5 12C4.3 9.5 7.5 6.5 12 6.5Zm0 2.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"
-                      />
+                    // eye (outline)
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.036 12.322a1.01 1.01 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638C20.573 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   )}
                 </button>
