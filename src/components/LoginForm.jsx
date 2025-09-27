@@ -1,34 +1,22 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { GoogleLogin } from "@react-oauth/google";
 
 /**
- * LoginForm.jsx
- *
- * A modern login component with:
- *  - Email + password form
- *  - Optional OAuth buttons (Google, GitHub by default)
- *  - Password visibility toggle
- *  - Basic client-side validation
- *  - Loading & error states
- *  - Minimal animations via framer-motion
- *
  * Props
- *  - onLogin?: (payload: { email: string; password: string; remember: boolean }) => Promise<void> | void
- *  - onOAuth?: (provider: string) => Promise<void> | void
+ *  - onLogin?: ({ email, password, remember }) => Promise<void> | void
+ *  - onOAuth?: (provider: string, token?: string) => Promise<void> | void
  *  - providers?: Array<{ id: string; label: string }>
  *  - title?: string
  *  - subtitle?: string
- *  - forgotHref?: string (optional)
+ *  - forgotHref?: string
  *  - disableRemember?: boolean
  */
 
 export default function LoginForm({
   onLogin,
   onOAuth,
-  providers = [
-    { id: "google", label: "Continue with Google" },
-    { id: "github", label: "Continue with GitHub" },
-  ],
+  providers = [{ id: "google", label: "Continue with Google" }], // ✅ restore default
   title = "Welcome back",
   subtitle = "Sign in to your account",
   forgotHref,
@@ -61,18 +49,6 @@ export default function LoginForm({
     }
   }
 
-  async function handleOAuth(provider) {
-    setError("");
-    try {
-      setLoading(true);
-      await onOAuth?.(provider);
-    } catch (err) {
-      setError(err?.message || "OAuth failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <div className="min-h-screen w-full grid place-items-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <motion.div
@@ -87,33 +63,44 @@ export default function LoginForm({
             <p className="text-slate-500 mt-1">{subtitle}</p>
           </div>
 
-          {/* OAuth buttons */}
+          {/* OAuth buttons (single block) */}
           {!!providers?.length && (
             <div className="space-y-3">
-              {providers.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleOAuth(p.id)}
-                  disabled={loading}
-                  className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {/* Simple provider marks */}
-                  {p.id === "google" ? (
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-                      <path fill="#EA4335" d="M12 10.2v3.9h5.5C16.9 16.9 14.7 18 12 18a6 6 0 1 1 0-12c1.6 0 3 .6 4.1 1.6l2.8-2.8A9.9 9.9 0 0 0 12 2a10 10 0 1 0 0 20c5.3 0 9.7-3.9 9.7-10 0-.7-.1-1.4-.2-1.8H12Z"/>
-                    </svg>
-                  ) : p.id === "github" ? (
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-                      <path fill="currentColor" d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.2.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.5-1.5-1.9-1.5-1.9-1.2-.8.1-.8.1-.8 1.3.1 2 1.4 2 1.4 1.2 2 3.1 1.5 3.8 1.2.1-.9.5-1.5.8-1.9-2.6-.3-5.2-1.3-5.2-5.9 0-1.3.5-2.3 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.9.1 3.2.8.9 1.2 1.9 1.2 3.2 0 4.6-2.6 5.6-5.2 5.9.5.4.9 1.2.9 2.4v3.5c0 .4.2.7.8.6A12 12 0 0 0 12 .5Z"/>
-                    </svg>
-                  ) : (
+              {providers.map((p) => {
+                if (p.id === "google") {
+                  return (
+                    <GoogleLogin
+                      key="google"
+                      onSuccess={(cred) => {
+                        const token = cred?.credential; // Google ID token (JWT)
+                        if (token) onOAuth?.("google", token);
+                      }}
+                      onError={() => {
+                        setError("Google sign-in failed.");
+                      }}
+                      useOneTap={false}
+                      theme="outline"
+                      shape="pill"
+                      text="signin_with"
+                    />
+                  );
+                }
+
+                // Generic button for other providers (placeholder)
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => onOAuth?.(p.id)}
+                    disabled={loading}
+                    className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
                     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
                       <circle cx="12" cy="12" r="10" fill="currentColor" />
                     </svg>
-                  )}
-                  {p.label}
-                </button>
-              ))}
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
           )}
 

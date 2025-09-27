@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import id_token
 from google.auth.transport import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
+import os, json
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -12,17 +13,43 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 SERVICE_ACCOUNT_KEY = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
 
 # Initialize Firebase Admin
-cred = credentials.Certificate(SERVICE_ACCOUNT_KEY)
+if not SERVICE_ACCOUNT_KEY:
+    raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_KEY is not set")
+
+try:
+    if SERVICE_ACCOUNT_KEY.strip().startswith("{"):
+        cred = credentials.Certificate(json.loads(SERVICE_ACCOUNT_KEY))
+    else:
+        cred = credentials.Certificate(SERVICE_ACCOUNT_KEY)
+except Exception as e:
+    raise RuntimeError(f"Invalid FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
+
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 app = FastAPI()
+
+# Allow React dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
+def health():
+    return {"ok": True}
 
 @app.post("/api/auth/login")
 async def login(data: dict):
     token = data.get("token")
     if not token:
         raise HTTPException(status_code=400, detail="Missing token")
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Server misconfigured: GOOGLE_CLIENT_ID not set")
 
     try:
         # Verify token with Google (must match React client ID)
@@ -43,9 +70,10 @@ async def login(data: dict):
             # Create new user profile
             user_ref.set({
                 "name": name,
+                "email": email,
                 "questions": []
             })
-            return {"msg": "New user created", "uid": uid}
+            return {"msg": "New user created", "uid": uid, "email": email, "name": name}
 
         # Existing user
         return {"msg": "User exists", "uid": uid, "profile": doc.to_dict()}
