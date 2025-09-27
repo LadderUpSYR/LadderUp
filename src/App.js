@@ -10,6 +10,7 @@ function App() {
     // TODO: implement password login if desired
   };
 
+
   // IMPORTANT: accept (provider, token). For Google, token is the Google ID token (JWT).
   const handleOAuth = async (provider, token) => {
     if (provider === "google" && token) {

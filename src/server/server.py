@@ -32,7 +32,7 @@ app = FastAPI()
 # Allow React dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000","http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,6 +44,7 @@ def health():
 
 @app.post("/api/auth/login")
 async def login(data: dict):
+    print("got a call.")
     token = data.get("token")
     if not token:
         raise HTTPException(status_code=400, detail="Missing token")

@@ -42,6 +42,7 @@ def test_login_new_user():
         # Ensure Firestore .set() was called
         mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
             "name": fake_name,
+            "email": 'test@example.com',
             "questions": []
         })
 
