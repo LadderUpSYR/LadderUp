@@ -74,6 +74,7 @@ async def login(data: dict):
         # Check Firestore for user profile
         user_ref = db.collection("users").document(uid)
         doc = user_ref.get()
+        userExisted = True
         if not doc.exists:
             # Create new user profile
             user_ref.set({
@@ -81,12 +82,13 @@ async def login(data: dict):
                 "email": email,
                 "questions": []
             })
+            userExisted = False
         
         session_token = secrets.token_urlsafe(32)
         sessions[session_token] = {"uid": uid, "name": name, "email": email, "expires": datetime.utcnow() + timedelta(days=7)}
 
         # Return user info + set cookie
-        response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}})
+        response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}, "msg": "User Exists" if userExisted else"New user created"})
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_token,

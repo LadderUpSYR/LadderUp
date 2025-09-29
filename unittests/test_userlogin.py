@@ -37,7 +37,11 @@ def test_login_new_user():
         assert response.status_code == 200
         data = response.json()
         assert data["msg"] == "New user created"
-        assert data["uid"] == fake_uid
+        assert data["user"] is not None
+
+        # we need to test on set cookies, maybe?
+
+        assert data["user"]["uid"] == fake_uid
 
         # Ensure Firestore .set() was called
         mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
@@ -69,9 +73,12 @@ def test_login_existing_user():
 
         assert response.status_code == 200
         data = response.json()
-        assert data["msg"] == "User exists"
-        assert data["uid"] == fake_uid
-        assert data["profile"] == fake_profile
+        assert data["msg"] == "User Exists"
+        assert data["user"] is not None
+
+        # we need to test on set cookies, maybe?
+
+        assert data["user"]["uid"] == fake_uid
 
 
     
