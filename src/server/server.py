@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -6,11 +6,16 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import os, json
 from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
+import secrets
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 SERVICE_ACCOUNT_KEY = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
+
+SESSION_COOKIE_NAME = "session_token" # needed?
 
 # Initialize Firebase Admin
 if not SERVICE_ACCOUNT_KEY:
@@ -37,6 +42,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+sessions = {} # live cache for active sessions
 
 @app.get("/health")
 def health():
@@ -74,10 +81,48 @@ async def login(data: dict):
                 "email": email,
                 "questions": []
             })
-            return {"msg": "New user created", "uid": uid, "email": email, "name": name}
+        
+        session_token = secrets.token_urlsafe(32)
+        sessions[session_token] = {"uid": uid, "name": name, "email": email, "expires": datetime.utcnow() + timedelta(days=7)}
 
-        # Existing user
-        return {"msg": "User exists", "uid": uid, "profile": doc.to_dict()}
+        # Return user info + set cookie
+        response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}})
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=session_token,
+            httponly=True,
+            secure=False,  # True in production
+            samesite="lax",
+            max_age=7*24*60*60
+        )
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/api/auth/logout")
+async def me(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token or session_token not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # otherwise remove from out cache
+
+    del sessions[session_token]
+    print(sessions)
+    return {"msg":"Successfuly signed out from the session"}
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token or session_token not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = sessions[session_token]
+    # Optional: check expiration
+    if session_data["expires"] < datetime.utcnow():
+        del sessions[session_token]
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    return {"user": {"uid": session_data["uid"], "name": session_data["name"], "email": session_data["email"]}}
+
