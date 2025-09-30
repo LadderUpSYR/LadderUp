@@ -74,14 +74,17 @@ async def login(data: dict):
         # Check Firestore for user profile
         user_ref = db.collection("users").document(uid)
         doc = user_ref.get()
-        userExisted = True
-        if not doc.exists:
-            # Create new user profile
-            user_ref.set({
-                "name": name,
-                "email": email,
-                "questions": []
-            })
+
+        userExisted = False 
+
+        if doc.exists:
+            profile = doc.to_dict()
+            name = profile.get("name", name)  # fallback to Google if missing
+            email = profile.get("email", email)
+            userExisted = True
+        else:
+            profile = {"name": name, "email": email, "questions": []}
+            user_ref.set(profile)
             userExisted = False
         
         session_token = secrets.token_urlsafe(32)
