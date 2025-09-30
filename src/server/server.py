@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 import secrets
 from datetime import datetime, timedelta
+from pydantic import BaseModel
+import random
 
 # Load environment variables
 load_dotenv()
@@ -131,3 +133,57 @@ async def me(request: Request):
 
     return {"user": {"uid": session_data["uid"], "name": session_data["name"], "email": session_data["email"]}}
 
+
+
+# questions grabbing from the DB
+class QuestionRequest(BaseModel):
+    questionId: int
+
+@app.post("/api/question/id")
+async def getQuestion(data: QuestionRequest):
+    # data has the questionId type
+    # do we also need to track who the user was making the call? Such that we can track data and analytics
+    print("getQuestion endpoint called with:", data)
+    valid_id = data.questionId
+    #analytics.hook(id)
+    question_ref = db.collection("questions").document(str(valid_id))
+    qs = question_ref.get()
+
+    if qs.exists:
+        dicti = qs.to_dict()
+        print("Found answer in firestore.")
+    else:
+        # default dictionary, is there a better way of getting this?
+        dicti = {
+            "answerCriteria":"This question should follow the STAR principle. They can answer in many ways, but should be short (maximum of one minute or ten sentences).",
+            "avgScore":1,
+            "numAttempts":0,
+            "question": "Tell us about a time you had a great team member. How did they make the project better?"
+            }
+
+    response = JSONResponse(dicti)
+    return response
+    
+@app.get("/api/question/random")
+async def getRandomQuestion():
+    print("getRandomQuestion endpoint called")
+    try:
+        questions = db.collection("questions").stream()
+        all_questions = [q.to_dict() for q in questions]
+
+        if not all_questions:
+            # default question if DB empty
+            dicti = {
+                "answerCriteria": "This question should follow the STAR principle...",
+                "avgScore": 1,
+                "numAttempts": 0,
+                "question": "Tell us about a time you had a great team member..."
+            }
+        else:
+            dicti = random.choice(all_questions)
+            print("Chose a random question, rather than default question")
+
+        return JSONResponse(dicti)
+    except Exception as e:
+        print("Error fetching random question:", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch random question")
