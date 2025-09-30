@@ -37,18 +37,23 @@ def test_login_new_user():
         assert response.status_code == 200
         data = response.json()
         assert data["msg"] == "New user created"
-        assert data["uid"] == fake_uid
+        assert data["user"] is not None
+
+        # we need to test on set cookies, maybe?
+
+        assert data["user"]["uid"] == fake_uid
 
         # Ensure Firestore .set() was called
         mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
             "name": fake_name,
+            "email": 'test@example.com',
             "questions": []
         })
 
 
 def test_login_existing_user():
     fake_uid = "67890"
-    fake_profile = {"name": "Existing User", "questions": [True, False, True]}
+    fake_profile = {"name": "Existing User", "email":"jimmy@gmail.com","questions": [True, False, True]}
 
     with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
          patch("src.server.server.db") as mock_db:
@@ -59,18 +64,22 @@ def test_login_existing_user():
             "name": "Existing User"
         }
 
-        fake_doc = MagicMock()
+        fake_doc = MagicMock() # create magic mock object, we are creating fake returns / fields
         fake_doc.exists = True
         fake_doc.to_dict.return_value = fake_profile
-        mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
+        mock_db.collection.return_value.document.return_value.get.return_value = fake_doc # when we call:
 
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
+        # doc = user_ref.get() , return out fake doc
+
+        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"}) # call in and test logic after patch
 
         assert response.status_code == 200
         data = response.json()
-        assert data["msg"] == "User exists"
-        assert data["uid"] == fake_uid
-        assert data["profile"] == fake_profile
+        assert data["msg"] == "User Exists"
+        assert data["user"]["name"] == fake_profile["name"]
+        assert data["user"]["email"] == fake_profile["email"]
+
+        assert data["user"]["uid"] == fake_uid
 
 
     
