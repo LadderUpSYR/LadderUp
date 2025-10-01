@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from pathlib import Path
 
+# keep service account key in same dir
 
 class Profile(BaseModel):
     userName: str
@@ -18,13 +19,13 @@ def test_firebase_connection():
     '''
     dotenv_path = Path('.env')
     load_dotenv(dotenv_path=dotenv_path)
-    print("ENV FIREBASE_CREDENTIALS =", os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY"))
 
 
      # Initialize Firebase Admin
 
-    cred = credentials.Certificate(os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY"))
+    cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, name="test_app_1")
+
 
     db = firestore.client()
 
