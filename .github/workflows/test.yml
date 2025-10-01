@@ -1,0 +1,42 @@
+name: Run Unit Tests
+
+on:
+  push:
+    # Trigger the workflow on 'push' events to the 'main' branch
+    branches: [ main ]
+  pull_request:
+    # Trigger the workflow on 'pull_request' events to the 'main' branch
+    branches: [ main ]
+
+jobs:
+  test:
+    # Use the latest Ubuntu environment
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      # Checks out your repository under $GITHUB_WORKSPACE
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      # Replace 'python@v3.x' with the version your project uses
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      # Install your project's dependencies
+      # You might need to adjust this (e.g., using 'npm install' or 'bundle install')
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt # Assuming you have a requirements.txt
+
+    - name: Install testing framework
+      # Install your unit test runner (e.g., pytest, jest, etc.)
+      run: pip install pytest
+
+    - name: Run unit tests
+      # This is the crucial step. It runs the tests in your specified directory.
+      # The command will vary based on your language/framework.
+      run: |
+        pytest unittests/ # This command assumes your tests are in the /unittests/ directory
