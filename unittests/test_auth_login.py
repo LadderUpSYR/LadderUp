@@ -31,50 +31,45 @@ class _DB:
         assert name == "users"
         return _Collection(self.users)
 
-def _load_app():
-    """
-    Import src/server/server.py with firebase patched so we don't need real creds.
-    Returns (appmod, client, fakedb)
-    """
-
-    for mod in ("server.server",):
-        if mod in sys.modules: del sys.modules[mod]
-
-        env = {
+def _load_app_with_env():
+    # Provide fake FIREBASE_SERVICE_ACCOUNT_KEY so server.py does not fail
+    env = {
         "GOOGLE_CLIENT_ID": "test-client-id",
-        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}",
-        }
+        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"  # empty JSON string works for patching
+    }
 
-        with patch.dict(os.environ, env, clear=False), \
-            patch("firebase_admin.initialize_app", lambda *a, **k: None), \
-            patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
-            patch("firebase_admin.firestore.client", lambda: object()):
+    with patch.dict(os.environ, env, clear=False), \
+         patch("firebase_admin.initialize_app", lambda *a, **k: None), \
+         patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
+         patch("firebase_admin.firestore.client", lambda: object()):
+        
+        # import after env patch
+        from src.server import server as appmod
 
-            from server import server as appmod
-
+    # attach fake db
     fakedb = _DB()
     appmod.db = fakedb
     appmod.GOOGLE_CLIENT_ID = "test-client-id"
-
     client = TestClient(appmod.app)
     return appmod, client, fakedb
+
 
 # ---------------- tests ----------------
 
 def test_health_ok():
-    appmod, client, _ = _load_app()
+    appmod, client, _ = _load_app_with_env()
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
 
 def test_missing_token_400():
-    appmod, client, _ = _load_app()
+    appmod, client, _ = _load_app_with_env()
     r = client.post("/api/auth/login", json={})
     assert r.status_code == 400
     assert r.json()["detail"] == "Missing token"
 
 def test_invalid_token_401():
-    appmod, client, _ = _load_app()
+    appmod, client, _ = _load_app_with_env()
     with patch.object(appmod.id_token, "verify_oauth2_token", side_effect=Exception("bad")):
         r = client.post("/api/auth/login", json={"token": "BAD"})
     assert r.status_code == 401
@@ -116,7 +111,6 @@ def test_existing_user_200():
 
 
 
-client = TestClient(app)
 
 @pytest.mark.parametrize(
     "fake_uid,fake_profile,token_email,token_name,expected_msg",
@@ -133,6 +127,7 @@ def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name,
     Test login endpoint for both new and existing users, verifying Firestore calls, response, and session cookie.
     """
 
+    appmod, client, _ = _load_app_with_env()
     with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
          patch("src.server.server.db") as mock_db:
 
@@ -168,7 +163,7 @@ def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name,
         assert data["user"]["email"] == token_email
 
     # Cookie should be set
-    cookie = response.cookies.get(SESSION_COOKIE_NAME)
+    cookie = response.cookies.get(appmod.SESSION_COOKIE_NAME)
     assert cookie is not None
     assert len(cookie) > 0
 
