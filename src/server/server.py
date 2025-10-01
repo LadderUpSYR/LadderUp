@@ -146,9 +146,12 @@ async def getQuestion(data: QuestionRequest):
     print("getQuestion endpoint called with:", data)
     valid_id = data.questionId
     #analytics.hook(id)
+<<<<<<< HEAD
 
     
 
+=======
+>>>>>>> 361936eb620898f42e82f8c26653a6bae89ec52e
     question_ref = db.collection("questions").document(str(valid_id))
     qs = question_ref.get()
 
