@@ -168,7 +168,7 @@ async def getQuestion(data: QuestionRequest):
 async def getRandomQuestion():
     print("getRandomQuestion endpoint called")
     try:
-        questions = db.collection("questions").stream()
+        questions = db.collection("questions").stream() # is this way too much data to stream...?
         all_questions = [q.to_dict() for q in questions]
 
         if not all_questions:
