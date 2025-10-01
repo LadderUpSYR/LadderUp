@@ -30,10 +30,11 @@ jobs:
           pip install python-dotenv pydantic firebase-admin
 
       # 4️⃣ Write Firebase key to a file
-      # Will put this in a dir that we can read from
       - name: Write Firebase key to file
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}" > serviceAccountKey.json
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > serviceAccountKey.json
+          echo "FIREBASE_SERVICE_ACCOUNT_KEY=serviceAccountKey.json" >> $GITHUB_ENV
+
 
       # 5️⃣ Run your tests
       - name: Run tests
