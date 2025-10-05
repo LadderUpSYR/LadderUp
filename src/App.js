@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./App.css";
 import LoginForm from "./components/LoginForm";
+import Profile from "./components/ProfilePage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 
@@ -44,6 +45,14 @@ function App() {
       // quick setIsLoggedIn
       setUser(data.user)
 
+      // *Added for redirecting to profile page after login*
+      // After setting user, redirect to profile page
+      try {
+        window.history.pushState({}, "", "/profile");
+      } catch (e) {
+        // fallback
+        window.location.pathname = "/profile";
+      }
 
       return;
     }
@@ -64,10 +73,24 @@ function App() {
           subtitle="Sign in to continue"
         />
     ) : (
-          <div className="min-h-screen w-full flex flex-col items-center justify-center">
-            <p>You are logged in as {user.name}</p>
-            <button onClick={logout}>Log Out</button>
-          </div>
+          // <div className="min-h-screen w-full flex flex-col items-center justify-center">
+          //   <p>You are logged in as {user.name}</p>
+          //   <button onClick={logout}>Log Out</button>
+          // </div>
+
+          // *Added for redirecting to profile page after login*
+          // If the user has navigated to /profile, render the profile component.
+          (window.location.pathname === "/profile") ? (
+            <Profile user={user} />
+          ) : (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center">
+              <p>You are logged in as {user.name}</p>
+              <div className="space-x-3 mt-3">
+                <button onClick={() => { try { window.history.pushState({}, '', '/profile') } catch(e){ window.location.pathname = '/profile' } }} className="px-3 py-1 bg-blue-600 text-white rounded">Go to profile</button>
+                <button onClick={logout} className="px-3 py-1 bg-gray-200 rounded">Log Out</button>
+              </div>
+            </div>
+          )
     )}
       </div>
     </GoogleOAuthProvider>
