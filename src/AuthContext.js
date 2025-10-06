@@ -1,5 +1,6 @@
 // AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { checkAuthStatus, handleLogout } from "./utils/auth";
 
 const AuthContext = createContext();
 
@@ -11,11 +12,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/auth/me", {
-          credentials: "include", 
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const data = await checkAuthStatus();
+        if (data && data.user) {
           setUser(data.user);
         } else {
           setUser(null);
@@ -30,10 +28,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = async () => {
-    await fetch("http://localhost:8000/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    });
+    try {
+      await handleLogout();
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     setUser(null);
   };
 
