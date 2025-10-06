@@ -3,13 +3,14 @@ Unit tests for the signup endpoint
 """
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
 import sys
 import os
 
 # Add the parent directory to the path so we can import the server
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.server.server import app, db, sessions, hash_password, verify_password
+from src.server.server import app, sessions, hash_password, verify_password
 
 client = TestClient(app)
 
@@ -53,20 +54,19 @@ class TestSignupEndpoint:
     """Test the signup endpoint"""
     
     def setup_method(self):
-        """Clear sessions and test data before each test"""
+        """Clear sessions before each test"""
         sessions.clear()
-        # Note: In production, you'd want to use a test database
-        # For now, we'll test with the real DB but use unique emails
     
-    def test_signup_success(self):
+    @patch("src.server.server.db")
+    def test_signup_success(self, mock_db):
         """Test successful user signup"""
-        import uuid
-        test_email = f"test_{uuid.uuid4()}@example.com"
+        # Mock Firestore to return no existing users
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
         
         response = client.post(
             "/api/auth/signup",
             json={
-                "email": test_email,
+                "email": "test@example.com",
                 "password": "password123",
                 "name": "Test User"
             }
@@ -76,7 +76,7 @@ class TestSignupEndpoint:
         data = response.json()
         
         assert "user" in data
-        assert data["user"]["email"] == test_email
+        assert data["user"]["email"] == "test@example.com"
         assert data["user"]["name"] == "Test User"
         assert "uid" in data["user"]
         assert data["msg"] == "Account created successfully"
@@ -84,42 +84,28 @@ class TestSignupEndpoint:
         # Check that session cookie was set
         assert "session_token" in response.cookies
         
-        # Cleanup: delete test user
-        uid = data["user"]["uid"]
-        db.collection("users").document(uid).delete()
+        # Verify Firestore was called to create user
+        mock_db.collection.assert_called_with("users")
+        assert mock_db.collection.return_value.document.return_value.set.called
     
-    def test_signup_duplicate_email(self):
+    @patch("src.server.server.db")
+    def test_signup_duplicate_email(self, mock_db):
         """Test that duplicate email returns error"""
-        import uuid
-        test_email = f"test_{uuid.uuid4()}@example.com"
+        # Mock Firestore to return an existing user
+        mock_user = MagicMock()
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user]
         
-        # First signup
-        response1 = client.post(
+        response = client.post(
             "/api/auth/signup",
             json={
-                "email": test_email,
+                "email": "existing@example.com",
                 "password": "password123",
                 "name": "Test User"
             }
         )
-        assert response1.status_code == 200
-        uid = response1.json()["user"]["uid"]
         
-        # Try to signup again with same email
-        response2 = client.post(
-            "/api/auth/signup",
-            json={
-                "email": test_email,
-                "password": "different123",
-                "name": "Different User"
-            }
-        )
-        
-        assert response2.status_code == 409
-        assert "already registered" in response2.json()["detail"].lower()
-        
-        # Cleanup
-        db.collection("users").document(uid).delete()
+        assert response.status_code == 409
+        assert "already registered" in response.json()["detail"].lower()
     
     def test_signup_invalid_email(self):
         """Test that invalid email returns error"""
@@ -163,15 +149,16 @@ class TestSignupEndpoint:
         assert response.status_code == 400
         assert "name" in response.json()["detail"].lower()
     
-    def test_signup_creates_user_in_db(self):
+    @patch("src.server.server.db")
+    def test_signup_creates_user_in_db(self, mock_db):
         """Test that signup actually creates user in Firestore"""
-        import uuid
-        test_email = f"test_{uuid.uuid4()}@example.com"
+        # Mock Firestore to return no existing users
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
         
         response = client.post(
             "/api/auth/signup",
             json={
-                "email": test_email,
+                "email": "test@example.com",
                 "password": "password123",
                 "name": "Test User"
             }
@@ -180,27 +167,17 @@ class TestSignupEndpoint:
         assert response.status_code == 200
         uid = response.json()["user"]["uid"]
         
-        # Check Firestore (only if db is not mocked)
-        try:
-            user_doc = db.collection("users").document(uid).get()
-            if hasattr(user_doc, 'exists') and user_doc.exists:
-                user_data = user_doc.to_dict()
-                assert user_data["email"] == test_email
-                assert user_data["name"] == "Test User"
-                assert user_data["auth_provider"] == "email"
-                assert "password_hash" in user_data
-                assert "created_at" in user_data
-                
-                # Cleanup
-                db.collection("users").document(uid).delete()
-            else:
-                # If db is mocked or document doesn't exist, just verify response
-                assert uid is not None
-                assert len(uid) > 0
-        except (AttributeError, TypeError):
-            # db is mocked, just verify the response is correct
-            assert uid is not None
-            assert len(uid) > 0
+        # Verify Firestore set was called with correct data
+        set_call = mock_db.collection.return_value.document.return_value.set
+        assert set_call.called
+        
+        user_data = set_call.call_args[0][0]
+        assert user_data["email"] == "test@example.com"
+        assert user_data["name"] == "Test User"
+        assert user_data["auth_provider"] == "email"
+        assert "password_hash" in user_data
+        assert "created_at" in user_data
+        assert user_data["uid"] == uid
 
 
 class TestEmailLoginEndpoint:
@@ -210,28 +187,25 @@ class TestEmailLoginEndpoint:
         """Clear sessions before each test"""
         sessions.clear()
     
-    def test_login_success(self):
+    @patch("src.server.server.db")
+    def test_login_success(self, mock_db):
         """Test successful login with email and password"""
-        import uuid
-        test_email = f"test_{uuid.uuid4()}@example.com"
+        test_email = "test@example.com"
         test_password = "password123"
+        password_hash = hash_password(test_password)
         
-        # First create a user
-        signup_response = client.post(
-            "/api/auth/signup",
-            json={
-                "email": test_email,
-                "password": test_password,
-                "name": "Test User"
-            }
-        )
-        assert signup_response.status_code == 200
-        uid = signup_response.json()["user"]["uid"]
+        # Mock Firestore to return a user
+        mock_user_doc = MagicMock()
+        mock_user_doc.to_dict.return_value = {
+            "uid": "test-uid-123",
+            "email": test_email,
+            "name": "Test User",
+            "password_hash": password_hash,
+            "auth_provider": "email"
+        }
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user_doc]
         
-        # Clear sessions to simulate new login
-        sessions.clear()
-        
-        # Now try to login
+        # Login
         login_response = client.post(
             "/api/auth/login-email",
             json={
@@ -249,25 +223,23 @@ class TestEmailLoginEndpoint:
         
         # Check session cookie
         assert "session_token" in login_response.cookies
-        
-        # Cleanup
-        db.collection("users").document(uid).delete()
     
-    def test_login_wrong_password(self):
+    @patch("src.server.server.db")
+    def test_login_wrong_password(self, mock_db):
         """Test login fails with wrong password"""
-        import uuid
-        test_email = f"test_{uuid.uuid4()}@example.com"
+        test_email = "test@example.com"
+        password_hash = hash_password("correctpassword")
         
-        # Create user
-        signup_response = client.post(
-            "/api/auth/signup",
-            json={
-                "email": test_email,
-                "password": "correctpassword",
-                "name": "Test User"
-            }
-        )
-        uid = signup_response.json()["user"]["uid"]
+        # Mock Firestore to return a user
+        mock_user_doc = MagicMock()
+        mock_user_doc.to_dict.return_value = {
+            "uid": "test-uid-123",
+            "email": test_email,
+            "name": "Test User",
+            "password_hash": password_hash,
+            "auth_provider": "email"
+        }
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user_doc]
         
         # Try to login with wrong password
         login_response = client.post(
@@ -280,12 +252,13 @@ class TestEmailLoginEndpoint:
         
         assert login_response.status_code == 401
         assert "invalid" in login_response.json()["detail"].lower()
-        
-        # Cleanup
-        db.collection("users").document(uid).delete()
     
-    def test_login_nonexistent_user(self):
+    @patch("src.server.server.db")
+    def test_login_nonexistent_user(self, mock_db):
         """Test login fails for non-existent user"""
+        # Mock Firestore to return no users
+        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
+        
         response = client.post(
             "/api/auth/login-email",
             json={
