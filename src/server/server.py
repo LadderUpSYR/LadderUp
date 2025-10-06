@@ -169,10 +169,10 @@ async def signup(data: SignupRequest):
             "uid": uid,
             "email": email,
             "name": name,
-            "password_hash": password_hash,
+            "password_hash": password_hash, 
             "created_at": datetime.now(timezone.utc).isoformat(),
             "questions": [],
-            "auth_provider": "email"
+            "auth_provider": "email" # new field needs to be reflected in firestore db now
         }
         
         user_ref = db.collection("users").document(uid)
@@ -212,6 +212,7 @@ class LoginEmailRequest(BaseModel):
     email: str
     password: str
 
+# any endpoint needs to be sent over https; reject otherwise...?
 @app.post("/api/auth/login-email")
 async def login_email(data: LoginEmailRequest):
     """
