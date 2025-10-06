@@ -1,0 +1,148 @@
+import React, { useState } from "react";
+
+function EditableField({ label, type = "text", value = "", placeholder = "", onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [localValue, setLocalValue] = useState(value);
+
+  const save = () => {
+    setEditing(false);
+    if (onSave) onSave(localValue);
+  };
+
+  return (
+    <div>
+      <label className="block font-medium">{label}</label>
+      {editing ? (
+        <>
+          <input
+            className="mt-1 border rounded px-2 py-1 w-full"
+            type={type}
+            value={localValue}
+            placeholder={placeholder}
+            onChange={(e) => setLocalValue(e.target.value)}
+          />
+          <div className="mt-2 space-x-2">
+            <button onClick={save} className="px-3 py-1 bg-blue-600 text-white rounded">
+              Save
+            </button>
+            <button
+              onClick={() => {
+                setEditing(false);
+                setLocalValue(value);
+              }}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="mt-1 flex items-center justify-between">
+          <div className="text-gray-700">
+            {value || <span className="text-gray-400">{placeholder}</span>}
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="ml-3 px-2 py-1 bg-blue-600 text-white rounded"
+          >
+            Edit
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// add props for user and question data
+function Profile({ user }) {
+  return (
+    <div className="min-h-screen w-full flex bg-gray-100 p-6">
+      <div className="flex-1 bg-white shadow-md rounded-lg p-6 mr-6">
+        <h1 className="text-2xl font-bold mb-4">User Stats</h1>
+
+        <div className="mb-6">
+          <label className="font-medium">Interview readiness meter:</label>
+          <div className="mt-2 w-full bg-gray-200 rounded h-4">
+            <div className="h-4 rounded bg-blue-500" style={{ width: `0%` }} />
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="font-medium"># of questions answered:</label>
+          <div className="mt-1 text-gray-600">(not populated)</div>
+        </div>
+
+        <div className="mb-6">
+          <label className="font-medium">Score of each question:</label>
+          <ul className="list-disc list-inside text-gray-600 mt-1">
+            <li>(no scores yet)</li>
+          </ul>
+        </div>
+
+        <div>
+          <label className="font-medium">Previous answers:</label>
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full text-left border border-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-2 border-b">Date</th>
+                  <th className="px-8 py-2 border-b">Question</th>
+                  <th className="px-2 py-2 border-b">Answer</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
+                    (no previous answers)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-96 bg-white shadow-md rounded-lg p-6">
+        <h2 className="text-xl font-semibold mb-4">User Settings</h2>
+        <div className="space-y-6">
+          <EditableField
+            label="Change username"
+            value={user?.name || ""}
+            placeholder="New username"
+            onSave={(v) => console.log("Save username:", v)}
+          />
+
+          <EditableField
+            label="Change password"
+            type="password"
+            value={""}
+            placeholder="New password"
+            onSave={(v) => console.log("Save password:", v)}
+          />
+
+          <div>
+            <label className="block font-medium">Delete account</label>
+            <div className="mt-2">
+              <button className="px-3 py-1 bg-red-600 text-white rounded">
+                Delete account
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="block font-medium mb-2">Resume</h3>
+            <div className="flex items-center space-x-3">
+              <input type="file" accept="application/pdf" />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 text-sm text-gray-500">
+          Signed in as: {user?.name || user?.email}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Profile;
