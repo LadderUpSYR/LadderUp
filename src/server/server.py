@@ -11,6 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import random
+from fastapi.encoders import jsonable_encoder
 import hashlib
 import uuid
 
@@ -361,3 +362,51 @@ async def getRandomQuestion():
     except Exception as e:
         print("Error fetching random question:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch random question")
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+
+@app.put("/api/profile/edit")
+async def edit_profile(request: Request, data: UpdateProfileRequest):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token or session_token not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = sessions[session_token]
+    uid = session_data["uid"]
+
+    try:
+        # Update the user's profile in Firestore
+        user_ref = db.collection("users").document(uid)
+        user_ref.update({"name": data.name})
+
+        # Update the session cache
+        session_data["name"] = data.name
+        sessions[session_token] = session_data
+
+        return {"msg": "Profile updated successfully", "user": {"uid": uid, "name": data.name}}
+    except Exception as e:
+        print("Error updating profile:", e)
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+@app.delete("/api/auth/delete-account")
+async def delete_account(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token or session_token not in sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = sessions[session_token]
+    uid = session_data["uid"]
+
+    try:
+        # Delete the user's profile from Firestore
+        user_ref = db.collection("users").document(uid)
+        user_ref.delete()
+
+        # Remove the session
+        del sessions[session_token]
+
+        return {"msg": "Account deleted successfully"}
+    except Exception as e:
+        print("Error deleting account:", e)
+        raise HTTPException(status_code=500, detail="Failed to delete account")

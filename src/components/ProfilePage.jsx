@@ -1,12 +1,33 @@
 import React, { useState } from "react";
+import { handleLogout } from "../utils/auth";
+import { useAuth } from "../AuthContext";
 
 function EditableField({ label, type = "text", value = "", placeholder = "", onSave }) {
+  const { setUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value);
 
-  const save = () => {
-    setEditing(false);
-    if (onSave) onSave(localValue);
+  const save = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/profile/edit", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: localValue }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to update username");
+      }
+
+      const data = await response.json();
+      setUser(data.user);
+      setEditing(false);
+    } catch (error) {
+      console.error("Update username error:", error);
+      alert(error.message);
+    }
   };
 
   return (
@@ -55,6 +76,27 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
 
 // add props for user and question data
 function Profile({ user }) {
+  const deleteAccount = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/auth/delete-account", {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to delete account");
+      }
+
+      alert("Account deleted successfully");
+      await handleLogout();
+      window.location.href = "/login"; // Redirect to login page
+    } catch (error) {
+      console.error("Delete account error:", error);
+      alert(error.message);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full flex bg-gray-100 p-6">
       <div className="flex-1 bg-white shadow-md rounded-lg p-6 mr-6">
@@ -123,7 +165,10 @@ function Profile({ user }) {
           <div>
             <label className="block font-medium">Delete account</label>
             <div className="mt-2">
-              <button className="px-3 py-1 bg-red-600 text-white rounded">
+              <button
+                onClick={deleteAccount}
+                className="px-3 py-1 bg-red-600 text-white rounded"
+              >
                 Delete account
               </button>
             </div>
