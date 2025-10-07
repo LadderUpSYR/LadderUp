@@ -24,6 +24,19 @@ class _DocRef:
 class _Collection:
     def __init__(self, store): self.store = store
     def document(self, uid): return _DocRef(self.store, uid)
+    def where(self, field, op, value):
+        """Mock the where() method for querying"""
+        mock_query = MagicMock()
+        mock_query.limit = MagicMock(return_value=mock_query)
+        
+        # Return matching documents
+        matching = []
+        for uid, data in self.store.items():
+            if field in data and data[field] == value:
+                matching.append(_Doc(True, data))
+        
+        mock_query.stream = MagicMock(return_value=iter(matching))
+        return mock_query
 
 class _DB:
     def __init__(self): self.users = {}
@@ -176,8 +189,13 @@ def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name,
 
     # For new users, ensure Firestore .set() was called
     if not fake_profile:
-        mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
-            "name": token_name,
-            "email": token_email,
-            "questions": []
-        })
+        # Check that set was called with the correct structure (including new fields)
+        call_args = mock_db.collection.return_value.document.return_value.set.call_args
+        assert call_args is not None
+        set_data = call_args[0][0]
+        assert set_data["uid"] == fake_uid
+        assert set_data["name"] == token_name
+        assert set_data["email"] == token_email
+        assert set_data["questions"] == []
+        assert set_data["auth_provider"] == "google"
+        assert "created_at" in set_data

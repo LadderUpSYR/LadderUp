@@ -36,12 +36,16 @@ def test_login_new_user():
     assert data["user"]["name"] == fake_name
     assert data["user"]["email"] == "test@example.com"
 
-    # Ensure Firestore .set() was called for new user
-    mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
-        "name": fake_name,
-        "email": "test@example.com",
-        "questions": []
-    })
+    # Ensure Firestore .set() was called for new user with correct structure
+    call_args = mock_db.collection.return_value.document.return_value.set.call_args
+    assert call_args is not None
+    set_data = call_args[0][0]
+    assert set_data["uid"] == fake_uid
+    assert set_data["name"] == fake_name
+    assert set_data["email"] == "test@example.com"
+    assert set_data["questions"] == []
+    assert set_data["auth_provider"] == "google"
+    assert "created_at" in set_data
 
     # Check session cookie
     cookie = response.cookies.get(appmod.SESSION_COOKIE_NAME)
