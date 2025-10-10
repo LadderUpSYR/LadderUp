@@ -31,7 +31,7 @@ class MatchRequest(BaseModel):
 # websocket that will handle prompting two players to accept a match
 #
 @matchmaking_service.websocket('/join_mm_pool')
-async def ws(MatchRequest: MatchRequest):
+async def ws():
     '''
     global mm_buckets # current caching of mm buckets
     '''
