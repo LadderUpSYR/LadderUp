@@ -8,10 +8,12 @@ import os, json
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import random
 import redis.asyncio as redis
+
+#uvicorn src.server.server:app --reload
 
 # Connect to Redis
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
@@ -50,9 +52,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from .redis_client import redis_client
-
 
 @app.get("/health")
 def health():
@@ -98,13 +97,11 @@ async def login(data: dict):
         
         session_token = secrets.token_urlsafe(32)
         
-        # updated redis storage
-        # Save session
-        await redis_client.hset(f"session:{session_token}", mapping={
+        await redis_client.hset(f"{SESSION_PREFIX}{session_token}", mapping={
             "uid": uid,
             "name": name,
             "email": email,
-            "expires": str((datetime.utcnow() + timedelta(days=7)).timestamp())
+            "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         })
 
         # Return user info + set cookie
@@ -125,18 +122,24 @@ async def login(data: dict):
 @app.post("/api/auth/logout")
 async def logout(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    response = JSONResponse({"msg": "Successfully signed out"})
+    
+    # Always delete the cookie on the client side, regardless of server status
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    
     if not session_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        # No session token means nothing to do, return success
+        return response 
 
-    # ✅ Check Redis instead of local dict
-    user_id = await redis_client.get(SESSION_PREFIX + session_token)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    key = SESSION_PREFIX + session_token
+    
+    # FIX 1: Now using EXISTS and DELETE to handle the session Hash, 
+    # resolving the WRONGTYPE error caused by trying to use GET on a Hash.
+    if await redis_client.exists(key):
+        # Remove session Hash from Redis
+        await redis_client.delete(key)
 
-    # ✅ Remove session from Redis
-    await redis_client.delete(SESSION_PREFIX + session_token)
-
-    return {"msg": "Successfully signed out"}
+    return response
 
 
 @app.get("/api/auth/me")
@@ -145,13 +148,14 @@ async def me(request: Request):
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # ✅ Check Redis for session data
+    # Check Redis for session data (using HGETALL for the Hash type)
     session_data = await redis_client.hgetall(SESSION_PREFIX + session_token)
     if not session_data:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     # Optional: check expiration
-    if float(session_data["expires"]) < datetime.utcnow().timestamp():
+    # FIX 2: Replaced datetime.utcnow() with timezone-aware datetime.now(timezone.utc)
+    if float(session_data["expires"]) < datetime.now(timezone.utc).timestamp():
         await redis_client.delete(SESSION_PREFIX + session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
