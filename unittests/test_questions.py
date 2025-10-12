@@ -31,9 +31,9 @@ def test_get_question_2():
         question_id = 2
         question_class = {"questionId":question_id}
         requestClass = QuestionRequest(**question_class)
-        assert requestClass.dict() == {"questionId": 2}
+        assert requestClass.model_dump() == {"questionId": 2}
 
-        response = client.post("/api/question/id", json=requestClass.dict())
+        response = client.post("/api/question/id", json=requestClass.model_dump())
 
         assert response.status_code == 200
         data = response.json()

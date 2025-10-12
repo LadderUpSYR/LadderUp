@@ -11,13 +11,80 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import random
+import hashlib
+import uuid
 import redis.asyncio as redis
+from redis.exceptions import RedisError
+from typing import Dict, Optional
 
 #uvicorn src.server.server:app --reload
 
 # Connect to Redis
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 SESSION_PREFIX = "session:"
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
+# Fallback in-memory session store if Redis is unavailable
+memory_sessions: Dict[str, Dict[str, str]] = {}
+
+
+def build_session_payload(uid: str, name: str, email: str) -> Dict[str, str]:
+    """Create a session payload with a refreshed expiry."""
+    return {
+        "uid": uid,
+        "name": name,
+        "email": email,
+        "expires": str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
+    }
+
+
+async def store_session(session_token: str, data: Dict[str, str]) -> None:
+    """Persist session data in Redis, falling back to in-memory storage."""
+    expires_at = data.get("expires")
+    if not expires_at:
+        expires_at = str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
+        data["expires"] = expires_at
+
+    # Ensure all values are strings for Redis compatibility
+    redis_payload = {k: str(v) for k, v in data.items()}
+
+    try:
+        await redis_client.hset(f"{SESSION_PREFIX}{session_token}", mapping=redis_payload)
+        await redis_client.expire(f"{SESSION_PREFIX}{session_token}", SESSION_TTL_SECONDS)
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis unavailable, using in-memory store: {err}")
+        memory_sessions[session_token] = redis_payload
+
+
+async def get_session(session_token: str) -> Optional[Dict[str, str]]:
+    """Retrieve session data, preferring Redis and falling back to memory."""
+    try:
+        data = await redis_client.hgetall(f"{SESSION_PREFIX}{session_token}")
+        if data:
+            return data
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis fetch failed, checking memory store: {err}")
+
+    data = memory_sessions.get(session_token)
+    if not data:
+        return None
+
+    expires = float(data.get("expires", 0))
+    if expires < datetime.now(timezone.utc).timestamp():
+        memory_sessions.pop(session_token, None)
+        return None
+
+    return data
+
+
+async def delete_session(session_token: str) -> None:
+    """Delete session data from Redis and memory."""
+    try:
+        await redis_client.delete(f"{SESSION_PREFIX}{session_token}")
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis delete failed: {err}")
+
+    memory_sessions.pop(session_token, None)
 
 
 # Load environment variables
@@ -74,7 +141,11 @@ async def login(data: dict):
             requests.Request(),
             GOOGLE_CLIENT_ID
         )
+    except Exception as exc:
+        print(f"Token verification failed: {exc}")
+        raise HTTPException(status_code=401, detail="Invalid token") from None
 
+    try:
         uid = idinfo["sub"]          # unique Google user ID
         email = idinfo.get("email")
         name = idinfo.get("name", "") # creates username as google name
@@ -91,18 +162,19 @@ async def login(data: dict):
             email = profile.get("email", email)
             userExisted = True
         else:
-            profile = {"name": name, "email": email, "questions": []}
+            profile = {
+                "uid": uid,
+                "name": name,
+                "email": email,
+                "questions": [],
+                "auth_provider": "google",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
             user_ref.set(profile)
             userExisted = False
         
         session_token = secrets.token_urlsafe(32)
-        
-        await redis_client.hset(f"{SESSION_PREFIX}{session_token}", mapping={
-            "uid": uid,
-            "name": name,
-            "email": email,
-            "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
-        })
+        await store_session(session_token, build_session_payload(uid, name, email))
 
         # Return user info + set cookie
         response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}, "msg": "User Exists" if userExisted else"New user created"})
@@ -112,12 +184,169 @@ async def login(data: dict):
             httponly=True,
             secure=False,  # True in production
             samesite="lax",
-            max_age=7*24*60*60
+            max_age=SESSION_TTL_SECONDS
         )
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        print(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed")
+
+# Helper function to hash passwords
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify a password against its hash"""
+    return hash_password(password) == hashed
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+
+@app.post("/api/auth/signup")
+async def signup(data: SignupRequest):
+    """
+    Create a new user account with email and password.
+    Generates a unique UID for the user.
+    """
+    email = data.email.lower().strip()
+    password = data.password
+    name = data.name.strip()
+
+    # Validation
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
+
+    try:
+        # Check if email already exists
+        users_ref = db.collection("users")
+        existing_users = users_ref.where("email", "==", email).limit(1).stream()
+        
+        if any(existing_users):
+            raise HTTPException(status_code=409, detail="Email already registered")
+
+        # Generate a unique UID
+        uid = str(uuid.uuid4())
+        
+        # Hash the password
+        password_hash = hash_password(password)
+
+        # Create user profile in Firestore
+        user_data = {
+            "uid": uid,
+            "email": email,
+            "name": name,
+            "password_hash": password_hash, 
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "questions": [],
+            "auth_provider": "email" # new field needs to be reflected in firestore db now
+        }
+        
+        user_ref = db.collection("users").document(uid)
+        user_ref.set(user_data)
+
+        # Create session
+        session_token = secrets.token_urlsafe(32)
+        await store_session(session_token, build_session_payload(uid, name, email))
+
+        # Return user info + set cookie
+        response = JSONResponse({
+            "user": {"uid": uid, "name": name, "email": email},
+            "msg": "Account created successfully"
+        })
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=session_token,
+            httponly=True,
+            secure=False,  # True in production
+            samesite="lax",
+            max_age=SESSION_TTL_SECONDS
+        )
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Signup error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create account")
+
+class LoginEmailRequest(BaseModel):
+    email: str
+    password: str
+
+# any endpoint needs to be sent over https; reject otherwise...?
+@app.post("/api/auth/login-email")
+async def login_email(data: LoginEmailRequest):
+    """
+    Login with email and password (not OAuth).
+    """
+    email = data.email.lower().strip()
+    password = data.password
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+
+    try:
+        # Find user by email
+        users_ref = db.collection("users")
+        users = users_ref.where("email", "==", email).limit(1).stream()
+        
+        user_doc = None
+        for user in users:
+            user_doc = user
+            break
+        
+        if not user_doc:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        user_data = user_doc.to_dict()
+        
+        # Verify password (only for email auth users)
+        if user_data.get("auth_provider") != "email":
+            raise HTTPException(status_code=401, detail="Please use Google sign-in for this account")
+        
+        password_hash = user_data.get("password_hash")
+        if not password_hash or not verify_password(password, password_hash):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        # Create session
+        uid = user_data.get("uid")
+        name = user_data.get("name")
+        
+        session_token = secrets.token_urlsafe(32)
+        await store_session(session_token, build_session_payload(uid, name, email))
+
+        # Return user info + set cookie
+        response = JSONResponse({
+            "user": {"uid": uid, "name": name, "email": email},
+            "msg": "Login successful"
+        })
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=session_token,
+            httponly=True,
+            secure=False,  # True in production
+            samesite="lax",
+            max_age=SESSION_TTL_SECONDS
+        )
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed")
 
 @app.post("/api/auth/logout")
 async def logout(request: Request):
@@ -131,13 +360,8 @@ async def logout(request: Request):
         # No session token means nothing to do, return success
         return response 
 
-    key = SESSION_PREFIX + session_token
-    
-    # FIX 1: Now using EXISTS and DELETE to handle the session Hash, 
-    # resolving the WRONGTYPE error caused by trying to use GET on a Hash.
-    if await redis_client.exists(key):
-        # Remove session Hash from Redis
-        await redis_client.delete(key)
+
+    await delete_session(session_token)
 
     return response
 
@@ -148,15 +372,15 @@ async def me(request: Request):
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Check Redis for session data (using HGETALL for the Hash type)
-    session_data = await redis_client.hgetall(SESSION_PREFIX + session_token)
+    # Check Redis/in-memory for session data
+    session_data = await get_session(session_token)
     if not session_data:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     # Optional: check expiration
     # FIX 2: Replaced datetime.utcnow() with timezone-aware datetime.now(timezone.utc)
     if float(session_data["expires"]) < datetime.now(timezone.utc).timestamp():
-        await redis_client.delete(SESSION_PREFIX + session_token)
+        await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
     return {"user": {"uid": session_data["uid"], "name": session_data["name"], "email": session_data["email"]}}
