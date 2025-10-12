@@ -72,6 +72,9 @@ See the section about [deployment](https://facebook.github.io/create-react-app/d
 #### `docker run --name redis -p 6379:6379 -d redis`
 Running docker for session token caching across multiple files.
 
+docker ps -a
+docker start redis
+
 #### `npm run eject`
 
 **Note: this is a one-way operation. Once you `eject`, you can't go back!**

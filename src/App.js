@@ -6,6 +6,7 @@ import QuestionDebug from "./components/QuestionDebug";
 import Profile from "./components/ProfilePage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
+import MatchmakingPage from "./components/MatchmakingPage";
 import { 
   handleOAuthLogin, 
   handleEmailLogin, 
@@ -88,6 +89,9 @@ function App() {
               <div className="space-x-3 mt-3">
                 <button onClick={() => { try { window.history.pushState({}, '', '/profile'); console.log("Navigated to profile"); } catch(e){ window.location.pathname = '/profile' } }} className="px-3 py-1 bg-blue-600 text-white rounded">Go to profile</button>
                 <button onClick={logout} className="px-3 py-1 bg-gray-200 rounded">Log Out</button>
+              </div>
+              <div className="mt-6 w-full max-w-md">
+                <MatchmakingPage />
               </div>
             </div>
           )
