@@ -17,7 +17,7 @@ import { GoogleLogin } from "@react-oauth/google";
 export default function LoginForm({
   onLogin,
   onOAuth,
-  providers = [{ id: "google", label: "Continue with Google" }], // ✅ restore default
+  providers = [{ id: "google", label: "Continue with Google" }], // restore default
   title = "Welcome back",
   subtitle = "Sign in to your account",
   forgotHref,
