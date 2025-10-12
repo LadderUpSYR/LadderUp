@@ -1,51 +1,64 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { GoogleLogin } from "@react-oauth/google";
 
 /**
- * Props
- *  - onLogin?: ({ email, password, remember }) => Promise<void> | void
- *  - onOAuth?: (provider: string, token?: string) => Promise<void> | void
- *  - providers?: Array<{ id: string; label: string }>
+ * SignupForm Component
+ * Props:
+ *  - onSignup: ({ email, password, name }) => Promise<void> | void
+ *  - onSwitchToLogin?: () => void
  *  - title?: string
  *  - subtitle?: string
- *  - forgotHref?: string
- *  - disableRemember?: boolean
- *  - onSwitchToSignup?: () => void
  */
 
-export default function LoginForm({
-  onLogin,
-  onOAuth,
-  providers = [{ id: "google", label: "Continue with Google" }], // ✅ restore default
-  title = "Welcome back",
-  subtitle = "Sign in to your account",
-  forgotHref,
-  disableRemember,
-  onSwitchToSignup,
+export default function SignupForm({
+  onSignup,
+  onSwitchToLogin,
+  title = "Create your account",
+  subtitle = "Sign up to get started",
 }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const emailValid = (v) => /.+@.+\..+/.test(v);
   const pwValid = (v) => v.length >= 6;
+  const nameValid = (v) => v.trim().length >= 2;
 
-  async function handleLogin(e) {
+  async function handleSignup(e) {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
-    if (!emailValid(email)) return setError("Please enter a valid email address.");
-    if (!pwValid(password)) return setError("Password must be at least 6 characters.");
+    // Validation
+    if (!nameValid(name)) {
+      return setError("Name must be at least 2 characters long.");
+    }
+    if (!emailValid(email)) {
+      return setError("Please enter a valid email address.");
+    }
+    if (!pwValid(password)) {
+      return setError("Password must be at least 6 characters.");
+    }
+    if (password !== confirmPassword) {
+      return setError("Passwords do not match.");
+    }
 
     try {
       setLoading(true);
-      await onLogin?.({ email, password, remember });
+      await onSignup?.({ email, password, name });
+      setSuccess("Account created successfully! Redirecting...");
+      // Clear form
+      setName("");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
     } catch (err) {
-      setError(err?.message || "Sign-in failed. Please try again.");
+      setError(err?.message || "Sign-up failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -65,60 +78,25 @@ export default function LoginForm({
             <p className="text-slate-500 mt-1">{subtitle}</p>
           </div>
 
-          {/* OAuth buttons (single block) */}
-          {!!providers?.length && (
-            <div className="space-y-3">
-              {providers.map((p) => {
-                if (p.id === "google") {
-                  return (
-                    <GoogleLogin
-                      key="google"
-                      onSuccess={(cred) => {
-                        const token = cred?.credential; // Google ID token (JWT)
-                        if (token) onOAuth?.("google", token);
-                      }}
-                      onError={() => {
-                        setError("Google sign-in failed.");
-                      }}
-                      useOneTap={false}
-                      theme="outline"
-                      shape="pill"
-                      text="signin_with"
-                    />
-                  );
-                }
-
-                // Generic button for other providers (placeholder)
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => onOAuth?.(p.id)}
-                    disabled={loading}
-                    className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
-                      <circle cx="12" cy="12" r="10" fill="currentColor" />
-                    </svg>
-                    {p.label}
-                  </button>
-                );
-              })}
+          {/* Signup form */}
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="name" className="block text-sm font-medium text-slate-700">
+                Full Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                disabled={loading}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/40"
+                placeholder="John Doe"
+                required
+              />
             </div>
-          )}
 
-          {!!providers?.length && (
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <div className="w-full border-t border-slate-200" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-white px-2 text-xs text-slate-400">or continue with email</span>
-              </div>
-            </div>
-          )}
-
-          {/* Email/password form */}
-          <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="email" className="block text-sm font-medium text-slate-700">
                 Email
@@ -137,21 +115,14 @@ export default function LoginForm({
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                  Password
-                </label>
-                {forgotHref && (
-                  <a href={forgotHref} className="text-xs text-slate-500 hover:text-slate-700">
-                    Forgot password?
-                  </a>
-                )}
-              </div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                Password
+              </label>
               <div className="relative">
                 <input
                   id="password"
                   type={showPw ? "text" : "password"}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   disabled={loading}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -166,7 +137,6 @@ export default function LoginForm({
                   aria-label={showPw ? "Hide password" : "Show password"}
                 >
                   {showPw ? (
-                    // eye-off (outline)
                     <svg
                       viewBox="0 0 24 24"
                       className="h-5 w-5"
@@ -183,7 +153,6 @@ export default function LoginForm({
                       <path d="M3 3l18 18" />
                     </svg>
                   ) : (
-                    // eye (outline)
                     <svg
                       viewBox="0 0 24 24"
                       className="h-5 w-5"
@@ -200,25 +169,35 @@ export default function LoginForm({
                   )}
                 </button>
               </div>
+              <p className="text-xs text-slate-500 mt-1">Must be at least 6 characters</p>
             </div>
 
-            {!disableRemember && (
-              <div className="flex items-center justify-between">
-                <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-400/50"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                  />
-                  Remember me
-                </label>
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">
+                Confirm Password
+              </label>
+              <input
+                id="confirmPassword"
+                type={showPw ? "text" : "password"}
+                autoComplete="new-password"
+                disabled={loading}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/40"
+                placeholder="••••••••"
+                required
+              />
+            </div>
 
             {error && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm px-3 py-2">
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm px-3 py-2">
+                {success}
               </div>
             )}
 
@@ -227,20 +206,20 @@ export default function LoginForm({
               disabled={loading}
               className="w-full rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm font-medium hover:bg-slate-800 disabled:opacity-60"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Creating account…" : "Create account"}
             </button>
           </form>
 
-          {/* Switch to signup */}
-          {onSwitchToSignup && (
+          {/* Switch to login */}
+          {onSwitchToLogin && (
             <div className="mt-6 text-center">
               <p className="text-sm text-slate-600">
-                Don't have an account?{" "}
+                Already have an account?{" "}
                 <button
-                  onClick={onSwitchToSignup}
+                  onClick={onSwitchToLogin}
                   className="font-medium text-slate-900 hover:underline"
                 >
-                  Sign up
+                  Sign in
                 </button>
               </p>
             </div>
@@ -248,7 +227,15 @@ export default function LoginForm({
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-4">
-          By continuing you agree to our <a className="underline hover:text-slate-700" href="#">Terms</a> and <a className="underline hover:text-slate-700" href="#">Privacy Policy</a>.
+          By signing up you agree to our{" "}
+          <a className="underline hover:text-slate-700" href="#">
+            Terms
+          </a>{" "}
+          and{" "}
+          <a className="underline hover:text-slate-700" href="#">
+            Privacy Policy
+          </a>
+          .
         </p>
       </motion.div>
     </div>

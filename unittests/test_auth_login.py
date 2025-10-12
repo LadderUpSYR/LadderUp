@@ -25,6 +25,19 @@ class _DocRef:
 class _Collection:
     def __init__(self, store): self.store = store
     def document(self, uid): return _DocRef(self.store, uid)
+    def where(self, field, op, value):
+        """Mock the where() method for querying"""
+        mock_query = MagicMock()
+        mock_query.limit = MagicMock(return_value=mock_query)
+        
+        # Return matching documents
+        matching = []
+        for uid, data in self.store.items():
+            if field in data and data[field] == value:
+                matching.append(_Doc(True, data))
+        
+        mock_query.stream = MagicMock(return_value=iter(matching))
+        return mock_query
 
 class _DB:
     def __init__(self): self.users = {}
@@ -143,8 +156,11 @@ def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token
 
     # Firestore .set() for new users
     if not fake_profile:
-        mock_db.collection.return_value.document.return_value.set.assert_called_once_with({
-            "name": token_name,
-            "email": token_email,
-            "questions": []
-        })
+        mock_set = mock_db.collection.return_value.document.return_value.set
+        mock_set.assert_called_once()
+        created_payload = mock_set.call_args[0][0]
+        assert created_payload["uid"] == fake_uid
+        assert created_payload["name"] == token_name
+        assert created_payload["email"] == token_email
+        assert created_payload["auth_provider"] == "google"
+        assert created_payload["questions"] == []

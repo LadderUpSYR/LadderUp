@@ -1,62 +1,58 @@
 import { useState } from "react";
 import "./App.css";
 import LoginForm from "./components/LoginForm";
+import SignupForm from "./components/SignupForm";
+import QuestionDebug from "./components/QuestionDebug";
 import Profile from "./components/ProfilePage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
-
-
-// this is going to be moved into a seperate component just called OAuth Login
-
-const API_BASE = "http://localhost:8000"; // adjust if different
+import { 
+  handleOAuthLogin, 
+  handleEmailLogin, 
+  handleSignup as handleSignupAuth 
+} from "./utils/auth";
 
 function App() {
   const { user, setUser, loading, logout } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
 
-  const handleLogin = async ({ email, password, remember }) => {
-    console.log("login:", { email, password, remember });
-    // TODO: implement password login if desired
+  const handleLogin = async (credentials) => {
+    const data = await handleEmailLogin(credentials);
+    setUser(data.user);
+    
+    // Redirect to profile page after login
+    try {
+      window.history.pushState({}, "", "/profile");
+    } catch (e) {
+      // fallback
+      window.location.pathname = "/profile";
+    }
   };
 
-  // checks in on browser cache if we are already logged in.
-  // if we are logged in, skip sign in page
-
-
-  // IMPORTANT: accept (provider, token). For Google, token is the Google ID token (JWT).
-  const handleOAuth = async (provider, token) => {
-    if (provider === "google" && token) {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ token }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Google sign-in failed");
-      }
-      const data = await res.json();
-      console.log("Signed in:", data.user);
-
-
-
-      // TODO: store auth state, redirect, etc.
-
-      // quick setIsLoggedIn
-      setUser(data.user)
-
-      // *Added for redirecting to profile page after login*
-      // After setting user, redirect to profile page
-      try {
-        window.history.pushState({}, "", "/profile");
-      } catch (e) {
-        // fallback
-        window.location.pathname = "/profile";
-      }
-
-      return;
+  const handleSignup = async (credentials) => {
+    const data = await handleSignupAuth(credentials);
+    setUser(data.user);
+    
+    // Redirect to profile page after signup
+    try {
+      window.history.pushState({}, "", "/profile");
+    } catch (e) {
+      // fallback
+      window.location.pathname = "/profile";
     }
-    alert(`OAuth for ${provider} not implemented yet.`);
+  };
+
+  const handleOAuth = async (provider, token) => {
+    const data = await handleOAuthLogin(provider, token);
+    setUser(data.user);
+    
+    // Redirect to profile page after login
+    try {
+      window.history.pushState({}, "", "/profile");
+    } catch (e) {
+      // fallback
+      window.location.pathname = "/profile";
+    }
   };
 
   if (loading) return <p>"Loading Splash Anim"</p>;
@@ -64,22 +60,26 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
       <div className="App">
-        {!user? (
-        <LoginForm
-          onLogin={handleLogin}
-          onOAuth={handleOAuth}
-          forgotHref="/forgot-password"
-          title="Welcome back"
-          subtitle="Sign in to continue"
-        />
-    ) : (
-          // <div className="min-h-screen w-full flex flex-col items-center justify-center">
-          //   <p>You are logged in as {user.name}</p>
-          //   <button onClick={logout}>Log Out</button>
-          // </div>
-
-          // *Added for redirecting to profile page after login*
-          // If the user has navigated to /profile, render the profile component.
+        {!user ? (
+          showSignup ? (
+            <SignupForm
+              onSignup={handleSignup}
+              onSwitchToLogin={() => setShowSignup(false)}
+              title="Create your account"
+              subtitle="Sign up to get started"
+            />
+          ) : (
+            <LoginForm
+              onLogin={handleLogin}
+              onOAuth={handleOAuth}
+              onSwitchToSignup={() => setShowSignup(true)}
+              forgotHref="/forgot-password"
+              title="Welcome back"
+              subtitle="Sign in to continue"
+            />
+          )
+        ) : (
+          // If the user has navigated to /profile, render the profile component
           (window.location.pathname === "/profile") ? (
             <Profile user={user} />
           ) : (
@@ -91,7 +91,7 @@ function App() {
               </div>
             </div>
           )
-    )}
+        )}
       </div>
     </GoogleOAuthProvider>
   );
