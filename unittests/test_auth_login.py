@@ -89,7 +89,6 @@ def test_invalid_token_401(load_app_with_env):
     assert r.json()["detail"] == "Invalid token"
 
 # ------------------ Parameterized login test ------------------
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fake_uid,fake_profile,token_email,token_name,expected_msg",
     [

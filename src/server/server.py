@@ -448,11 +448,18 @@ class UpdateProfileRequest(BaseModel):
 @app.put("/api/profile/edit")
 async def edit_profile(request: Request, data: UpdateProfileRequest):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token or session_token not in sessions:
+    if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session_data = sessions[session_token]
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     uid = session_data["uid"]
+
+    # Validate name
+    if len(data.name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
 
     try:
         # Update the user's profile in Firestore
@@ -461,7 +468,7 @@ async def edit_profile(request: Request, data: UpdateProfileRequest):
 
         # Update the session cache
         session_data["name"] = data.name
-        sessions[session_token] = session_data
+        await store_session(session_token, session_data)
 
         return {"msg": "Profile updated successfully", "user": {"uid": uid, "name": data.name, "email": session_data["email"]}}
     except Exception as e:
@@ -474,10 +481,13 @@ class UpdatePasswordRequest(BaseModel):
 @app.put("/api/profile/change-password")
 async def change_password(request: Request, data: UpdatePasswordRequest):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token or session_token not in sessions:
+    if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session_data = sessions[session_token]
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     uid = session_data["uid"]
 
     # Validate password
@@ -512,10 +522,13 @@ async def change_password(request: Request, data: UpdatePasswordRequest):
 @app.delete("/api/auth/delete-account")
 async def delete_account(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token or session_token not in sessions:
+    if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session_data = sessions[session_token]
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     uid = session_data["uid"]
 
     try:
@@ -524,9 +537,12 @@ async def delete_account(request: Request):
         user_ref.delete()
 
         # Remove the session
-        del sessions[session_token]
+        await delete_session(session_token)
 
-        return {"msg": "Account deleted successfully"}
+        # Return response with cookie deletion
+        response = JSONResponse({"msg": "Account deleted successfully"})
+        response.delete_cookie(key=SESSION_COOKIE_NAME)
+        return response
     except Exception as e:
         print("Error deleting account:", e)
         raise HTTPException(status_code=500, detail="Failed to delete account")

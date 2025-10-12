@@ -3,7 +3,7 @@ import os, sys
 from unittest.mock import patch, MagicMock, AsyncMock 
 from unittests.test_auth_login import load_app_with_env
 import pytest
-from datetime import datetime, timedelta # Need these for the mock data
+from datetime import datetime, timedelta, timezone # Need these for the mock data
 
 def test_profilepage_shows_user_with_answered_question(load_app_with_env):
     """
@@ -30,7 +30,7 @@ def test_profilepage_shows_user_with_answered_question(load_app_with_env):
     
     # 💡 Data that Redis needs to return for a successful /api/auth/me
     # Calculate a valid expiration time for the mock session
-    expires_timestamp = str((datetime.utcnow() + timedelta(days=7)).timestamp())
+    expires_timestamp = str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
     mock_session_data = {
         "uid": fake_uid,
         "name": fake_profile["name"],
