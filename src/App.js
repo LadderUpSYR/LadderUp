@@ -4,6 +4,7 @@ import LoginForm from "./components/LoginForm";
 import SignupForm from "./components/SignupForm";
 import QuestionDebug from "./components/QuestionDebug";
 import Profile from "./components/ProfilePage";
+import LandingPage from "./components/LandingPage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 import { 
@@ -15,6 +16,7 @@ import {
 function App() {
   const { user, setUser, loading, logout } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
+  const [showAuthForms, setShowAuthForms] = useState(false);
 
   const handleLogin = async (credentials) => {
     const data = await handleEmailLogin(credentials);
@@ -55,27 +57,44 @@ function App() {
     }
   };
 
+  const handleSignInClick = () => {
+    setShowSignup(false);
+    setShowAuthForms(true);
+  };
+
+  const handleSignUpClick = () => {
+    setShowSignup(true);
+    setShowAuthForms(true);
+  };
+
   if (loading) return <p>"Loading Splash Anim"</p>;
 
   return (
     <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
       <div className="App">
         {!user ? (
-          showSignup ? (
-            <SignupForm
-              onSignup={handleSignup}
-              onSwitchToLogin={() => setShowSignup(false)}
-              title="Create your account"
-              subtitle="Sign up to get started"
-            />
+          showAuthForms ? (
+            showSignup ? (
+              <SignupForm
+                onSignup={handleSignup}
+                onSwitchToLogin={() => setShowSignup(false)}
+                title="Create your account"
+                subtitle="Sign up to get started"
+              />
+            ) : (
+              <LoginForm
+                onLogin={handleLogin}
+                onOAuth={handleOAuth}
+                onSwitchToSignup={() => setShowSignup(true)}
+                forgotHref="/forgot-password"
+                title="Welcome back"
+                subtitle="Sign in to continue"
+              />
+            )
           ) : (
-            <LoginForm
-              onLogin={handleLogin}
-              onOAuth={handleOAuth}
-              onSwitchToSignup={() => setShowSignup(true)}
-              forgotHref="/forgot-password"
-              title="Welcome back"
-              subtitle="Sign in to continue"
+            <LandingPage 
+              onSignIn={handleSignInClick}
+              onSignUp={handleSignUpClick}
             />
           )
         ) : (
