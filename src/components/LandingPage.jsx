@@ -31,13 +31,13 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-900 relative overflow-hidden">
+    <div className="min-h-screen bg-gray-900/10 relative overflow-hidden">
       {/* Animated background particles */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {[...Array(50)].map((_, i) => (
           <div
             key={i}
-            className="absolute w-1 h-1 bg-sky-blue rounded-full opacity-20 animate-float"
+            className="absolute w-1 h-1 bg-gray rounded-full opacity-20 animate-float"
             style={{
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
@@ -57,7 +57,7 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
         }}
       />
       {/* Navigation */}
-      <nav className="bg-black shadow-lg border-b border-gray-800">
+      <nav className="bg-cream shadow-lg border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -84,7 +84,7 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
       {/* Hero Section */}
       <section className="relative pt-20 pb-32 px-4 overflow-hidden">
         {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-500 via-white to-gray-100"></div>
         
         {/* Animated gradient orbs */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-sky-blue/20 rounded-full blur-3xl animate-pulse"></div>
@@ -96,11 +96,11 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
             <div className="inline-block mb-4 px-4 py-2 bg-sky-blue/10 border border-sky-blue/30 rounded-full backdrop-blur-sm animate-bounce-slow">
               <span className="text-sky-blue text-sm font-semibold">🚀 AI-Powered Interview Mastery</span>
             </div>
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight animate-fade-in-up">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-700 mb-6 leading-tight animate-fade-in-up">
               Master Your Interviews with
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-blue via-blue-400 to-purple-400 animate-gradient bg-300%"> AI-Powered Preparation</span>
             </h1>
-            <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+            <p className="text-xl md:text-2xl text-gray-800 mb-8 max-w-3xl mx-auto leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
               Get real-time AI feedback on your interview responses. Practice smarter, 
               perform better, and land your dream job.
             </p>
