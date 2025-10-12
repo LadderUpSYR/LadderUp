@@ -1,12 +1,61 @@
 import React, { useState } from "react";
+import { useAuth } from "../AuthContext";
 
-function EditableField({ label, type = "text", value = "", placeholder = "", onSave }) {
+function EditableField({ label, type = "text", value = "", placeholder = "", onSave, fieldType = "name" }) {
+  const { setUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value);
 
-  const save = () => {
-    setEditing(false);
-    if (onSave) onSave(localValue);
+  const save = async () => {
+    try {
+      let endpoint, body, errorMsg;
+      
+      if (fieldType === "password") {
+        // Password change endpoint
+        if (localValue.length < 6) {
+          alert("Password must be at least 6 characters");
+          return;
+        }
+        endpoint = "http://localhost:8000/api/profile/change-password";
+        body = JSON.stringify({ password: localValue });
+        errorMsg = "Failed to update password";
+      } else {
+        // Username change endpoint
+        if (localValue.trim().length < 2) {
+          alert("Name must be at least 2 characters");
+          return;
+        }
+        endpoint = "http://localhost:8000/api/profile/edit";
+        body = JSON.stringify({ name: localValue });
+        errorMsg = "Failed to update username";
+      }
+
+      const response = await fetch(endpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: body,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || errorMsg);
+      }
+
+      const data = await response.json();
+      
+      // Update user context if username was changed
+      if (fieldType === "name" && data.user) {
+        setUser(data.user);
+      }
+      
+      alert(data.msg || "Update successful");
+      setEditing(false);
+      setLocalValue(fieldType === "password" ? "" : localValue); // Clear password field after save
+    } catch (error) {
+      console.error("Update error:", error);
+      alert(error.message);
+    }
   };
 
   return (
@@ -55,6 +104,38 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
 
 // add props for user and question data
 function Profile({ user }) {
+  const { logout } = useAuth();
+  
+  const deleteAccount = async () => {
+    if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:8000/api/auth/delete-account", {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to delete account");
+      }
+
+      // Call logout to clear the session and update context
+      await logout();
+      
+      // Show success message after logout completes
+      alert("Account deleted successfully");
+      
+      // Redirect to login page
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Delete account error:", error);
+      alert(error.message);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full flex bg-gray-100 p-6">
       <div className="flex-1 bg-white shadow-md rounded-lg p-6 mr-6">
@@ -109,6 +190,7 @@ function Profile({ user }) {
             label="Change username"
             value={user?.name || ""}
             placeholder="New username"
+            fieldType="name"
             onSave={(v) => console.log("Save username:", v)}
           />
 
@@ -117,13 +199,17 @@ function Profile({ user }) {
             type="password"
             value={""}
             placeholder="New password"
+            fieldType="password"
             onSave={(v) => console.log("Save password:", v)}
           />
 
           <div>
             <label className="block font-medium">Delete account</label>
             <div className="mt-2">
-              <button className="px-3 py-1 bg-red-600 text-white rounded">
+              <button
+                onClick={deleteAccount}
+                className="px-3 py-1 bg-red-600 text-white rounded"
+              >
                 Delete account
               </button>
             </div>

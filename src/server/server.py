@@ -11,6 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import random
+from fastapi.encoders import jsonable_encoder
 import hashlib
 import uuid
 import redis.asyncio as redis
@@ -440,3 +441,108 @@ async def getRandomQuestion():
     except Exception as e:
         print("Error fetching random question:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch random question")
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+
+@app.put("/api/profile/edit")
+async def edit_profile(request: Request, data: UpdateProfileRequest):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    # Validate name
+    if len(data.name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
+
+    try:
+        # Update the user's profile in Firestore
+        user_ref = db.collection("users").document(uid)
+        user_ref.update({"name": data.name})
+
+        # Update the session cache
+        session_data["name"] = data.name
+        await store_session(session_token, session_data)
+
+        return {"msg": "Profile updated successfully", "user": {"uid": uid, "name": data.name, "email": session_data["email"]}}
+    except Exception as e:
+        print("Error updating profile:", e)
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+class UpdatePasswordRequest(BaseModel):
+    password: str
+
+@app.put("/api/profile/change-password")
+async def change_password(request: Request, data: UpdatePasswordRequest):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    # Validate password
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    try:
+        # Get user data to check auth provider
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        
+        # Only allow password changes for email auth users
+        if user_data.get("auth_provider") != "email":
+            raise HTTPException(status_code=400, detail="Cannot change password for OAuth accounts")
+
+        # Hash and update the password
+        password_hash = hash_password(data.password)
+        user_ref.update({"password_hash": password_hash})
+
+        return {"msg": "Password updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error updating password:", e)
+        raise HTTPException(status_code=500, detail="Failed to update password")
+
+@app.delete("/api/auth/delete-account")
+async def delete_account(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    try:
+        # Delete the user's profile from Firestore
+        user_ref = db.collection("users").document(uid)
+        user_ref.delete()
+
+        # Remove the session
+        await delete_session(session_token)
+
+        # Return response with cookie deletion
+        response = JSONResponse({"msg": "Account deleted successfully"})
+        response.delete_cookie(key=SESSION_COOKIE_NAME)
+        return response
+    except Exception as e:
+        print("Error deleting account:", e)
+        raise HTTPException(status_code=500, detail="Failed to delete account")
