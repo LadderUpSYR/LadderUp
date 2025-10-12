@@ -1,17 +1,18 @@
-import os, sys, importlib
+import os, sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from src.server.server import SESSION_COOKIE_NAME, app
 import pytest
 
-
+# Ensure src is in sys.path
 SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+# ------------------ Fake Firestore classes ------------------
 class _Doc:
-    def __init__(self, exists, data=None): self._e, self._d = exists, data or {}
+    def __init__(self, exists, data=None): 
+        self._e, self._d = exists, data or {}
     @property
     def exists(self): return self._e
     def to_dict(self): return self._d
@@ -44,19 +45,20 @@ class _DB:
         assert name == "users"
         return _Collection(self.users)
 
-def _load_app_with_env():
-    # Provide fake FIREBASE_SERVICE_ACCOUNT_KEY so server.py does not fail
+# ------------------ Fixture ------------------
+@pytest.fixture
+def load_app_with_env():
     env = {
         "GOOGLE_CLIENT_ID": "test-client-id",
-        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"  # empty JSON string works for patching
+        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"
     }
 
     with patch.dict(os.environ, env, clear=False), \
          patch("firebase_admin.initialize_app", lambda *a, **k: None), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
          patch("firebase_admin.firestore.client", lambda: object()):
-        
-        # import after env patch
+
+        # import after patching
         from src.server import server as appmod
 
     # attach fake db
@@ -66,85 +68,43 @@ def _load_app_with_env():
     client = TestClient(appmod.app)
     return appmod, client, fakedb
 
-
-# ---------------- tests ----------------
-
-def test_health_ok():
-    appmod, client, _ = _load_app_with_env()
+# ------------------ Tests ------------------
+def test_health_ok(load_app_with_env):
+    appmod, client, _ = load_app_with_env
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
 
-def test_missing_token_400():
-    appmod, client, _ = _load_app_with_env()
+def test_missing_token_400(load_app_with_env):
+    appmod, client, _ = load_app_with_env
     r = client.post("/api/auth/login", json={})
     assert r.status_code == 400
     assert r.json()["detail"] == "Missing token"
 
-def test_invalid_token_401():
-    appmod, client, _ = _load_app_with_env()
+def test_invalid_token_401(load_app_with_env):
+    appmod, client, _ = load_app_with_env
     with patch.object(appmod.id_token, "verify_oauth2_token", side_effect=Exception("bad")):
         r = client.post("/api/auth/login", json={"token": "BAD"})
     assert r.status_code == 401
     assert r.json()["detail"] == "Invalid token"
 
-
-#
-# The two following tests are already covered in test_userlogin.py
-# commenting out for now, unless we can explain logically what is different
-# between the files
-'''
-def test_new_user_created_200():
-    appmod, client, fakedb = _load_app()
-    idinfo = {"sub": "uid123", "email": "u@example.com", "name": "User One"}
-    with patch.object(appmod.id_token, "verify_oauth2_token", return_value=idinfo):
-        r = client.post("/api/auth/login", json={"token": "GOOD"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["msg"] == "New user created"
-    body = body["user"]
-    assert body["uid"] == "uid123"
-    assert body["email"] == "u@example.com"
-    assert body["name"] == "User One"
-    assert fakedb.users["uid123"]["email"] == "u@example.com"
-
-def test_existing_user_200():
-    appmod, client, fakedb = _load_app()
-    fakedb.users["uidX"] = {"name": "Existing", "email": "ex@example.com", "questions": []}
-    idinfo = {"sub": "uidX", "email": "ex@example.com", "name": "Whatever"}
-    with patch.object(appmod.id_token, "verify_oauth2_token", return_value=idinfo):
-        r = client.post("/api/auth/login", json={"token": "GOOD"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["msg"] == "User Exists"
-    user = body["user"] # changed to grab this obj instead of what was references as profile?
-    assert user["uid"] == "uidX"
-    assert user["name"] == "Existing"
-'''
-
-
-
-
+# ------------------ Parameterized login test ------------------
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fake_uid,fake_profile,token_email,token_name,expected_msg",
     [
-        # New user
         ("12345", None, "cookie@test.com", "CookieUser", "New user created"),
-        # Existing user
         ("67890", {"name": "StoredUser", "email": "stored@test.com", "questions": []}, 
          "stored@test.com", "StoredUser", "User Exists")
     ]
 )
-def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name, expected_msg):
-    """
-    Test login endpoint for both new and existing users, verifying Firestore calls, response, and session cookie.
-    """
+def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token_email, token_name, expected_msg):
+    appmod, client, _ = load_app_with_env
 
-    appmod, client, _ = _load_app_with_env()
     with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server.server.db") as mock_db:
+         patch("src.server.server.db") as mock_db, \
+         patch("src.server.server.redis_client") as mock_redis:
 
-        # Mock Google verification
         mock_verify.return_value = {
             "sub": fake_uid,
             "email": token_email,
@@ -161,9 +121,12 @@ def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name,
 
         mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
 
+        mock_redis.hset = AsyncMock(return_value=True)
+
+        # Make request
         response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
 
-    # Basic response checks
+    # Response checks
     assert response.status_code == 200
     data = response.json()
     assert data["msg"] == expected_msg
@@ -180,22 +143,24 @@ def test_login_user_sets_cookie(fake_uid, fake_profile, token_email, token_name,
     assert cookie is not None
     assert len(cookie) > 0
 
-    # Session cache verification
-    from src.server import server
-    session = server.sessions[cookie]
-    assert session["uid"] == fake_uid
-    assert session["name"] == data["user"]["name"]
-    assert session["email"] == data["user"]["email"]
+    # Redis call check
+    mock_redis.hset.assert_awaited_once()
+    called_mapping = mock_redis.hset.call_args[1]["mapping"]
+    assert called_mapping["uid"] == fake_uid
+    if fake_profile:
+        assert called_mapping["name"] == fake_profile["name"]
+        assert called_mapping["email"] == fake_profile["email"]
+    else:
+        assert called_mapping["name"] == token_name
+        assert called_mapping["email"] == token_email
 
-    # For new users, ensure Firestore .set() was called
+    # Firestore .set() for new users
     if not fake_profile:
-        # Check that set was called with the correct structure (including new fields)
-        call_args = mock_db.collection.return_value.document.return_value.set.call_args
-        assert call_args is not None
-        set_data = call_args[0][0]
-        assert set_data["uid"] == fake_uid
-        assert set_data["name"] == token_name
-        assert set_data["email"] == token_email
-        assert set_data["questions"] == []
-        assert set_data["auth_provider"] == "google"
-        assert "created_at" in set_data
+        mock_set = mock_db.collection.return_value.document.return_value.set
+        mock_set.assert_called_once()
+        created_payload = mock_set.call_args[0][0]
+        assert created_payload["uid"] == fake_uid
+        assert created_payload["name"] == token_name
+        assert created_payload["email"] == token_email
+        assert created_payload["auth_provider"] == "google"
+        assert created_payload["questions"] == []

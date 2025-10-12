@@ -13,6 +13,79 @@ from pydantic import BaseModel
 import random
 import hashlib
 import uuid
+import redis.asyncio as redis
+from redis.exceptions import RedisError
+from typing import Dict, Optional
+
+#uvicorn src.server.server:app --reload
+
+# Connect to Redis
+redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+SESSION_PREFIX = "session:"
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
+# Fallback in-memory session store if Redis is unavailable
+memory_sessions: Dict[str, Dict[str, str]] = {}
+
+
+def build_session_payload(uid: str, name: str, email: str) -> Dict[str, str]:
+    """Create a session payload with a refreshed expiry."""
+    return {
+        "uid": uid,
+        "name": name,
+        "email": email,
+        "expires": str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
+    }
+
+
+async def store_session(session_token: str, data: Dict[str, str]) -> None:
+    """Persist session data in Redis, falling back to in-memory storage."""
+    expires_at = data.get("expires")
+    if not expires_at:
+        expires_at = str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
+        data["expires"] = expires_at
+
+    # Ensure all values are strings for Redis compatibility
+    redis_payload = {k: str(v) for k, v in data.items()}
+
+    try:
+        await redis_client.hset(f"{SESSION_PREFIX}{session_token}", mapping=redis_payload)
+        await redis_client.expire(f"{SESSION_PREFIX}{session_token}", SESSION_TTL_SECONDS)
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis unavailable, using in-memory store: {err}")
+        memory_sessions[session_token] = redis_payload
+
+
+async def get_session(session_token: str) -> Optional[Dict[str, str]]:
+    """Retrieve session data, preferring Redis and falling back to memory."""
+    try:
+        data = await redis_client.hgetall(f"{SESSION_PREFIX}{session_token}")
+        if data:
+            return data
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis fetch failed, checking memory store: {err}")
+
+    data = memory_sessions.get(session_token)
+    if not data:
+        return None
+
+    expires = float(data.get("expires", 0))
+    if expires < datetime.now(timezone.utc).timestamp():
+        memory_sessions.pop(session_token, None)
+        return None
+
+    return data
+
+
+async def delete_session(session_token: str) -> None:
+    """Delete session data from Redis and memory."""
+    try:
+        await redis_client.delete(f"{SESSION_PREFIX}{session_token}")
+    except (RedisError, AttributeError) as err:
+        print(f"[session] Redis delete failed: {err}")
+
+    memory_sessions.pop(session_token, None)
+
 
 # Load environment variables
 load_dotenv()
@@ -47,8 +120,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-sessions = {} # live cache for active sessions
-
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -70,7 +141,11 @@ async def login(data: dict):
             requests.Request(),
             GOOGLE_CLIENT_ID
         )
+    except Exception as exc:
+        print(f"Token verification failed: {exc}")
+        raise HTTPException(status_code=401, detail="Invalid token") from None
 
+    try:
         uid = idinfo["sub"]          # unique Google user ID
         email = idinfo.get("email")
         name = idinfo.get("name", "") # creates username as google name
@@ -99,7 +174,7 @@ async def login(data: dict):
             userExisted = False
         
         session_token = secrets.token_urlsafe(32)
-        sessions[session_token] = {"uid": uid, "name": name, "email": email, "expires": datetime.now(timezone.utc) + timedelta(days=7)}
+        await store_session(session_token, build_session_payload(uid, name, email))
 
         # Return user info + set cookie
         response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}, "msg": "User Exists" if userExisted else"New user created"})
@@ -109,12 +184,15 @@ async def login(data: dict):
             httponly=True,
             secure=False,  # True in production
             samesite="lax",
-            max_age=7*24*60*60
+            max_age=SESSION_TTL_SECONDS
         )
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        print(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed")
 
 # Helper function to hash passwords
 def hash_password(password: str) -> str:
@@ -180,12 +258,7 @@ async def signup(data: SignupRequest):
 
         # Create session
         session_token = secrets.token_urlsafe(32)
-        sessions[session_token] = {
-            "uid": uid,
-            "name": name,
-            "email": email,
-            "expires": datetime.now(timezone.utc) + timedelta(days=7)
-        }
+        await store_session(session_token, build_session_payload(uid, name, email))
 
         # Return user info + set cookie
         response = JSONResponse({
@@ -198,7 +271,7 @@ async def signup(data: SignupRequest):
             httponly=True,
             secure=False,  # True in production
             samesite="lax",
-            max_age=7*24*60*60
+            max_age=SESSION_TTL_SECONDS
         )
         return response
 
@@ -252,12 +325,7 @@ async def login_email(data: LoginEmailRequest):
         name = user_data.get("name")
         
         session_token = secrets.token_urlsafe(32)
-        sessions[session_token] = {
-            "uid": uid,
-            "name": name,
-            "email": email,
-            "expires": datetime.now(timezone.utc) + timedelta(days=7)
-        }
+        await store_session(session_token, build_session_payload(uid, name, email))
 
         # Return user info + set cookie
         response = JSONResponse({
@@ -270,7 +338,7 @@ async def login_email(data: LoginEmailRequest):
             httponly=True,
             secure=False,  # True in production
             samesite="lax",
-            max_age=7*24*60*60
+            max_age=SESSION_TTL_SECONDS
         )
         return response
 
@@ -281,27 +349,38 @@ async def login_email(data: LoginEmailRequest):
         raise HTTPException(status_code=500, detail="Login failed")
 
 @app.post("/api/auth/logout")
-async def me(request: Request):
+async def logout(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token or session_token not in sessions:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    response = JSONResponse({"msg": "Successfully signed out"})
+    
+    # Always delete the cookie on the client side, regardless of server status
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    
+    if not session_token:
+        # No session token means nothing to do, return success
+        return response 
 
-    # otherwise remove from out cache
 
-    del sessions[session_token]
-    print(sessions)
-    return {"msg":"Successfuly signed out from the session"}
+    await delete_session(session_token)
+
+    return response
+
 
 @app.get("/api/auth/me")
 async def me(request: Request):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token or session_token not in sessions:
+    if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    session_data = sessions[session_token]
+
+    # Check Redis/in-memory for session data
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     # Optional: check expiration
-    if session_data["expires"] < datetime.now(timezone.utc):
-        del sessions[session_token]
+    # FIX 2: Replaced datetime.utcnow() with timezone-aware datetime.now(timezone.utc)
+    if float(session_data["expires"]) < datetime.now(timezone.utc).timestamp():
+        await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
     return {"user": {"uid": session_data["uid"], "name": session_data["name"], "email": session_data["email"]}}

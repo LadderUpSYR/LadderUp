@@ -1,51 +1,112 @@
 """
 Unit tests for the signup endpoint
 """
-import pytest
+import os, sys
+from pathlib import Path
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
-import sys
-import os
+import pytest
 
-# Add the parent directory to the path so we can import the server
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Ensure src is in sys.path
+SRC = Path(__file__).resolve().parents[1] / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-from src.server.server import app, sessions, hash_password, verify_password
+# ------------------ Fake Firestore classes ------------------
+class _Doc:
+    def __init__(self, exists, data=None): 
+        self._e, self._d = exists, data or {}
+    @property
+    def exists(self): return self._e
+    def to_dict(self): return self._d
 
-client = TestClient(app)
+class _DocRef:
+    def __init__(self, store, uid): self.store, self.uid = store, uid
+    def get(self): return _Doc(self.uid in self.store, self.store.get(self.uid))
+    def set(self, data): self.store[self.uid] = data
+
+class _Collection:
+    def __init__(self, store): self.store = store
+    def document(self, uid): return _DocRef(self.store, uid)
+    def where(self, field, op, value):
+        """Mock the where() method for querying"""
+        mock_query = MagicMock()
+        mock_query.limit = MagicMock(return_value=mock_query)
+        
+        # Return matching documents
+        matching = []
+        for uid, data in self.store.items():
+            if field in data and data[field] == value:
+                matching.append(_Doc(True, data))
+        
+        mock_query.stream = MagicMock(return_value=iter(matching))
+        return mock_query
+
+class _DB:
+    def __init__(self): self.users = {}
+    def collection(self, name):
+        assert name == "users"
+        return _Collection(self.users)
+
+# ------------------ Fixture ------------------
+@pytest.fixture
+def load_app_with_env():
+    env = {
+        "GOOGLE_CLIENT_ID": "test-client-id",
+        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"
+    }
+
+    with patch.dict(os.environ, env, clear=False), \
+         patch("firebase_admin.initialize_app", lambda *a, **k: None), \
+         patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
+         patch("firebase_admin.firestore.client", lambda: object()):
+
+        # import after patching
+        from src.server import server as appmod
+
+    # attach fake db
+    fakedb = _DB()
+    appmod.db = fakedb
+    appmod.GOOGLE_CLIENT_ID = "test-client-id"
+    client = TestClient(appmod.app)
+    return appmod, client, fakedb
 
 
 class TestPasswordHashing:
     """Test password hashing utilities"""
     
-    def test_hash_password(self):
+    def test_hash_password(self, load_app_with_env):
         """Test that password hashing works"""
+        appmod, client, fakedb = load_app_with_env
         password = "testpassword123"
-        hashed = hash_password(password)
+        hashed = appmod.hash_password(password)
         
         assert hashed is not None
         assert len(hashed) == 64  # SHA-256 produces 64 hex characters
         assert hashed != password
     
-    def test_verify_password_correct(self):
+    def test_verify_password_correct(self, load_app_with_env):
         """Test that password verification works with correct password"""
+        appmod, client, fakedb = load_app_with_env
         password = "testpassword123"
-        hashed = hash_password(password)
+        hashed = appmod.hash_password(password)
         
-        assert verify_password(password, hashed) is True
+        assert appmod.verify_password(password, hashed) is True
     
-    def test_verify_password_incorrect(self):
+    def test_verify_password_incorrect(self, load_app_with_env):
         """Test that password verification fails with incorrect password"""
+        appmod, client, fakedb = load_app_with_env
         password = "testpassword123"
-        hashed = hash_password(password)
+        hashed = appmod.hash_password(password)
         
-        assert verify_password("wrongpassword", hashed) is False
+        assert appmod.verify_password("wrongpassword", hashed) is False
     
-    def test_same_password_same_hash(self):
+    def test_same_password_same_hash(self, load_app_with_env):
         """Test that the same password always produces the same hash"""
+        appmod, client, fakedb = load_app_with_env
         password = "testpassword123"
-        hash1 = hash_password(password)
-        hash2 = hash_password(password)
+        hash1 = appmod.hash_password(password)
+        hash2 = appmod.hash_password(password)
         
         assert hash1 == hash2
 
@@ -53,15 +114,9 @@ class TestPasswordHashing:
 class TestSignupEndpoint:
     """Test the signup endpoint"""
     
-    def setup_method(self):
-        """Clear sessions before each test"""
-        sessions.clear()
-    
-    @patch("src.server.server.db")
-    def test_signup_success(self, mock_db):
+    def test_signup_success(self, load_app_with_env):
         """Test successful user signup"""
-        # Mock Firestore to return no existing users
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
+        appmod, client, fakedb = load_app_with_env
         
         response = client.post(
             "/api/auth/signup",
@@ -82,18 +137,24 @@ class TestSignupEndpoint:
         assert data["msg"] == "Account created successfully"
         
         # Check that session cookie was set
-        assert "session_token" in response.cookies
+        assert appmod.SESSION_COOKIE_NAME in response.cookies
         
-        # Verify Firestore was called to create user
-        mock_db.collection.assert_called_with("users")
-        assert mock_db.collection.return_value.document.return_value.set.called
+        # Verify user was added to fake db
+        uid = data["user"]["uid"]
+        assert uid in fakedb.users
+        assert fakedb.users[uid]["email"] == "test@example.com"
     
-    @patch("src.server.server.db")
-    def test_signup_duplicate_email(self, mock_db):
+    def test_signup_duplicate_email(self, load_app_with_env):
         """Test that duplicate email returns error"""
-        # Mock Firestore to return an existing user
-        mock_user = MagicMock()
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user]
+        appmod, client, fakedb = load_app_with_env
+        
+        # Add existing user to fake db
+        fakedb.users["existing-uid"] = {
+            "uid": "existing-uid",
+            "email": "existing@example.com",
+            "name": "Existing User",
+            "password_hash": "somehash"
+        }
         
         response = client.post(
             "/api/auth/signup",
@@ -107,8 +168,10 @@ class TestSignupEndpoint:
         assert response.status_code == 409
         assert "already registered" in response.json()["detail"].lower()
     
-    def test_signup_invalid_email(self):
+    def test_signup_invalid_email(self, load_app_with_env):
         """Test that invalid email returns error"""
+        appmod, client, fakedb = load_app_with_env
+        
         response = client.post(
             "/api/auth/signup",
             json={
@@ -121,8 +184,10 @@ class TestSignupEndpoint:
         assert response.status_code == 400
         assert "email" in response.json()["detail"].lower()
     
-    def test_signup_short_password(self):
+    def test_signup_short_password(self, load_app_with_env):
         """Test that short password returns error"""
+        appmod, client, fakedb = load_app_with_env
+        
         response = client.post(
             "/api/auth/signup",
             json={
@@ -135,8 +200,10 @@ class TestSignupEndpoint:
         assert response.status_code == 400
         assert "password" in response.json()["detail"].lower()
     
-    def test_signup_short_name(self):
+    def test_signup_short_name(self, load_app_with_env):
         """Test that short name returns error"""
+        appmod, client, fakedb = load_app_with_env
+        
         response = client.post(
             "/api/auth/signup",
             json={
@@ -149,11 +216,9 @@ class TestSignupEndpoint:
         assert response.status_code == 400
         assert "name" in response.json()["detail"].lower()
     
-    @patch("src.server.server.db")
-    def test_signup_creates_user_in_db(self, mock_db):
+    def test_signup_creates_user_in_db(self, load_app_with_env):
         """Test that signup actually creates user in Firestore"""
-        # Mock Firestore to return no existing users
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
+        appmod, client, fakedb = load_app_with_env
         
         response = client.post(
             "/api/auth/signup",
@@ -167,11 +232,10 @@ class TestSignupEndpoint:
         assert response.status_code == 200
         uid = response.json()["user"]["uid"]
         
-        # Verify Firestore set was called with correct data
-        set_call = mock_db.collection.return_value.document.return_value.set
-        assert set_call.called
+        # Verify user was created in fake db
+        assert uid in fakedb.users
+        user_data = fakedb.users[uid]
         
-        user_data = set_call.call_args[0][0]
         assert user_data["email"] == "test@example.com"
         assert user_data["name"] == "Test User"
         assert user_data["auth_provider"] == "email"
@@ -183,27 +247,22 @@ class TestSignupEndpoint:
 class TestEmailLoginEndpoint:
     """Test the email/password login endpoint"""
     
-    def setup_method(self):
-        """Clear sessions before each test"""
-        sessions.clear()
-    
-    @patch("src.server.server.db")
-    def test_login_success(self, mock_db):
+    def test_login_success(self, load_app_with_env):
         """Test successful login with email and password"""
+        appmod, client, fakedb = load_app_with_env
+        
         test_email = "test@example.com"
         test_password = "password123"
-        password_hash = hash_password(test_password)
+        password_hash = appmod.hash_password(test_password)
         
-        # Mock Firestore to return a user
-        mock_user_doc = MagicMock()
-        mock_user_doc.to_dict.return_value = {
+        # Add user to fake db
+        fakedb.users["test-uid-123"] = {
             "uid": "test-uid-123",
             "email": test_email,
             "name": "Test User",
             "password_hash": password_hash,
             "auth_provider": "email"
         }
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user_doc]
         
         # Login
         login_response = client.post(
@@ -222,24 +281,23 @@ class TestEmailLoginEndpoint:
         assert data["msg"] == "Login successful"
         
         # Check session cookie
-        assert "session_token" in login_response.cookies
+        assert appmod.SESSION_COOKIE_NAME in login_response.cookies
     
-    @patch("src.server.server.db")
-    def test_login_wrong_password(self, mock_db):
+    def test_login_wrong_password(self, load_app_with_env):
         """Test login fails with wrong password"""
-        test_email = "test@example.com"
-        password_hash = hash_password("correctpassword")
+        appmod, client, fakedb = load_app_with_env
         
-        # Mock Firestore to return a user
-        mock_user_doc = MagicMock()
-        mock_user_doc.to_dict.return_value = {
+        test_email = "test@example.com"
+        password_hash = appmod.hash_password("correctpassword")
+        
+        # Add user to fake db
+        fakedb.users["test-uid-123"] = {
             "uid": "test-uid-123",
             "email": test_email,
             "name": "Test User",
             "password_hash": password_hash,
             "auth_provider": "email"
         }
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = [mock_user_doc]
         
         # Try to login with wrong password
         login_response = client.post(
@@ -253,11 +311,9 @@ class TestEmailLoginEndpoint:
         assert login_response.status_code == 401
         assert "invalid" in login_response.json()["detail"].lower()
     
-    @patch("src.server.server.db")
-    def test_login_nonexistent_user(self, mock_db):
+    def test_login_nonexistent_user(self, load_app_with_env):
         """Test login fails for non-existent user"""
-        # Mock Firestore to return no users
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = []
+        appmod, client, fakedb = load_app_with_env
         
         response = client.post(
             "/api/auth/login-email",
