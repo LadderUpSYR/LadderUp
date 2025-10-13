@@ -1,8 +1,8 @@
 from quart import Blueprint, websocket, Quart
 import asyncio
 import json
-from matchmaking import enqueue_player, try_match_players, listen_for_match
-from server import get_session
+from .matchmaking import enqueue_player, try_match_players, listen_for_match
+from .server import get_session
 
 ws_bp = Blueprint("ws", __name__)
 
@@ -15,7 +15,7 @@ async def health_check():
 
 @ws_bp.websocket("/ws/join")
 async def join_websocket():
-    # 1️⃣ Get and validate session
+    await websocket.accept()
     token = websocket.cookies.get(SESSION_COOKIE_NAME)
     if not token:
         await websocket.send(json.dumps({"error": "Missing session token"}))
@@ -23,18 +23,16 @@ async def join_websocket():
         return
 
     session_data = await get_session(token)
+    print(f"DEBUG: Session Data: {session_data}") # Add this
     if not session_data:
         await websocket.send(json.dumps({"error": "Invalid or expired session"}))
         await websocket.close(code=1008)
         return
 
     user_id = session_data["uid"]
-
-    # 2️⃣ Enqueue player in Redis
     await enqueue_player(user_id)
     await websocket.send(json.dumps({"status": "queued", "user": user_id}))
 
-    # 3️⃣ Listen for a match
     try:
         async for match in listen_for_match():
             if user_id in match["players"]:
