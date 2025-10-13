@@ -57,11 +57,11 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
         }}
       />
       {/* Navigation */}
-      <nav className="bg-cream shadow-lg border-b border-gray-800">
+      <nav className="bg-blue-500 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-sky-blue">LadderUp</h1>
+              <h1 className="text-2xl font-bold text-white outline-10 outline-black">LadderUp</h1>
             </div>
             <div className="flex space-x-4">
               <button
@@ -84,19 +84,28 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
       {/* Hero Section */}
       <section className="relative pt-20 pb-32 px-4 overflow-hidden">
         {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-500 via-white to-gray-100"></div>
+
+                {/*skyscrapers*/}
+        <div className="absolute left-1/2 -translate-x-1/2 w-[130vw] h-[100rem] z-10">
+          <img 
+            src="/images/skyscrapers.png" // Use the path to your saved file
+            alt="City skyscrapers silhouette"
+            className="w-full h-full object-cover object-bottom"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-500 via-white via-90% to-gray-100 z-30 opacity-90"></div>
         
         {/* Animated gradient orbs */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-sky-blue/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
         <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
-        
-        <div className="max-w-7xl mx-auto relative z-10">
+
+        <div className="max-w-7xl mx-auto relative z-50">
           <div className="text-center">
             <div className="inline-block mb-4 px-4 py-2 bg-sky-blue/10 border border-sky-blue/30 rounded-full backdrop-blur-sm animate-bounce-slow">
               <span className="text-sky-blue text-sm font-semibold">🚀 AI-Powered Interview Mastery</span>
             </div>
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-700 mb-6 leading-tight animate-fade-in-up">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-700 mb-6 leading-tight animate-fade-in-up outline-white" style={{ animationDelay: '0.1s' }}>
               Master Your Interviews with
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-blue via-blue-400 to-purple-400 animate-gradient bg-300%"> AI-Powered Preparation</span>
             </h1>
@@ -147,10 +156,10 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 bg-gray-800 relative" id="features" data-animate>
+      <section className="py-20 bg-gradient-to-b from-gray-100 to-gray-900 relative" id="features" data-animate>
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
               AI-Powered Features
             </h2>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">Built with cutting-edge technology to elevate your interview game</p>
