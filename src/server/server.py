@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import id_token
 from google.auth.transport import requests
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 import os, json
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
@@ -107,8 +107,11 @@ try:
 except Exception as e:
     raise RuntimeError(f"Invalid FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
 
-firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred, {
+    'storageBucket': 'ladderup-5e25d.firebasestorage.app'
+})
 db = firestore.client()
+bucket = storage.bucket()
 
 app = FastAPI()
 
@@ -546,3 +549,85 @@ async def delete_account(request: Request):
     except Exception as e:
         print("Error deleting account:", e)
         raise HTTPException(status_code=500, detail="Failed to delete account")
+
+@app.post("/api/profile/upload-resume")
+async def upload_resume(request: Request, file: UploadFile = File(...)):
+    """Upload a resume to Firebase Storage"""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    # Validate file type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    # Validate file size (max 10MB)
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+
+    try:
+        # Create a unique filename
+        file_path = f"resumes/{uid}/resume.pdf"
+        
+        # Upload to Firebase Storage
+        blob = bucket.blob(file_path)
+        blob.upload_from_string(content, content_type='application/pdf')
+        
+        # Make the file publicly accessible (or use signed URLs for private access)
+        blob.make_public()
+        
+        # Get the public URL
+        file_url = blob.public_url
+
+        # Update user profile with resume URL
+        user_ref = db.collection("users").document(uid)
+        user_ref.update({
+            "resume_url": file_url,
+            "resume_uploaded_at": datetime.now(timezone.utc).isoformat()
+        })
+
+        return {"msg": "Resume uploaded successfully", "resume_url": file_url}
+    except Exception as e:
+        print("Error uploading resume:", e)
+        raise HTTPException(status_code=500, detail="Failed to upload resume")
+
+@app.get("/api/profile/resume")
+async def get_resume(request: Request):
+    """Get the resume URL for the authenticated user"""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    try:
+        # Get user profile
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        resume_url = user_data.get("resume_url")
+        
+        if not resume_url:
+            return {"resume_url": None, "msg": "No resume uploaded"}
+        
+        return {"resume_url": resume_url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error fetching resume:", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch resume")
