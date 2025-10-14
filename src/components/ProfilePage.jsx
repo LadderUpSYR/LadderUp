@@ -336,6 +336,30 @@ function Profile({ user }) {
         <div className="mt-6 text-sm text-gray-500">
           Signed in as: {user?.name || user?.email}
         </div>
+
+        <div className="mt-4">
+          <button
+            onClick={() => {
+              const ok = window.confirm("Are you sure you want to sign out?");
+              if (!ok) return;
+              // call logout from context and redirect to login
+              try {
+                logout();
+              } catch (e) {
+                console.error("Logout failed:", e);
+              }
+              try {
+                // Navigate back to root/login
+                window.location.href = "/";
+              } catch (e) {
+                // noop
+              }
+            }}
+            className="w-full mt-3 px-3 py-2 bg-gray-200 text-slate-900 rounded"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     </div>
   );
