@@ -12,64 +12,8 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-# ------------------ Fake Firestore classes ------------------
-class _Doc:
-    def __init__(self, exists, data=None): 
-        self._e, self._d = exists, data or {}
-    @property
-    def exists(self): return self._e
-    def to_dict(self): return self._d
-
-class _DocRef:
-    def __init__(self, store, uid): self.store, self.uid = store, uid
-    def get(self): return _Doc(self.uid in self.store, self.store.get(self.uid))
-    def set(self, data): self.store[self.uid] = data
-
-class _Collection:
-    def __init__(self, store): self.store = store
-    def document(self, uid): return _DocRef(self.store, uid)
-    def where(self, field, op, value):
-        """Mock the where() method for querying"""
-        mock_query = MagicMock()
-        mock_query.limit = MagicMock(return_value=mock_query)
-        
-        # Return matching documents
-        matching = []
-        for uid, data in self.store.items():
-            if field in data and data[field] == value:
-                matching.append(_Doc(True, data))
-        
-        mock_query.stream = MagicMock(return_value=iter(matching))
-        return mock_query
-
-class _DB:
-    def __init__(self): self.users = {}
-    def collection(self, name):
-        assert name == "users"
-        return _Collection(self.users)
-
-# ------------------ Fixture ------------------
-@pytest.fixture
-def load_app_with_env():
-    env = {
-        "GOOGLE_CLIENT_ID": "test-client-id",
-        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"
-    }
-
-    with patch.dict(os.environ, env, clear=False), \
-         patch("firebase_admin.initialize_app", lambda *a, **k: None), \
-         patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
-         patch("firebase_admin.firestore.client", lambda: object()):
-
-        # import after patching
-        from src.server import server as appmod
-
-    # attach fake db
-    fakedb = _DB()
-    appmod.db = fakedb
-    appmod.GOOGLE_CLIENT_ID = "test-client-id"
-    client = TestClient(appmod.app)
-    return appmod, client, fakedb
+# import load app with env
+from .test_auth_login import load_app_with_env  # or define _load_app_with_env() in this file
 
 
 class TestPasswordHashing:
@@ -220,14 +164,20 @@ class TestSignupEndpoint:
         """Test that signup actually creates user in Firestore"""
         appmod, client, fakedb = load_app_with_env
         
-        response = client.post(
-            "/api/auth/signup",
-            json={
-                "email": "test@example.com",
-                "password": "password123",
-                "name": "Test User"
-            }
-        )
+        with patch("src.server.server.redis_client") as mock_redis_client:
+            # Set up mocks for success (or just a clean fall-through)
+            mock_redis_client.hset = AsyncMock(return_value=True) # Mock hset to succeed
+            mock_redis_client.expire = AsyncMock(return_value=True) # Mock expire to succeed
+            
+            # The test client POST request
+            response = client.post(
+                "/api/auth/signup",
+                json={
+                    "email": "test@example.com",
+                    "password": "password123",
+                    "name": "Test User"
+                }
+            )
         
         assert response.status_code == 200
         uid = response.json()["user"]["uid"]
@@ -244,6 +194,7 @@ class TestSignupEndpoint:
         assert user_data["uid"] == uid
 
 
+# note the redis mock manual patch instead of just using appmod / client
 class TestEmailLoginEndpoint:
     """Test the email/password login endpoint"""
     
@@ -265,13 +216,19 @@ class TestEmailLoginEndpoint:
         }
         
         # Login
-        login_response = client.post(
-            "/api/auth/login-email",
-            json={
-                "email": test_email,
-                "password": test_password
-            }
-        )
+        with patch("src.server.server.redis_client") as mock_redis_client:
+            # Set up mocks for success (or at least no internal cleanup error)
+            mock_redis_client.hset = AsyncMock(return_value=True)
+            mock_redis_client.expire = AsyncMock(return_value=True)
+
+            # Login
+            login_response = client.post(
+                "/api/auth/login-email",
+                json={
+                    "email": test_email,
+                    "password": test_password
+                }
+            )
         
         assert login_response.status_code == 200
         data = login_response.json()

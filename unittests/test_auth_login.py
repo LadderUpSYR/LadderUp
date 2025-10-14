@@ -2,6 +2,7 @@ import os, sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
+from redis.exceptions import RedisError 
 import pytest
 
 # Ensure src is in sys.path
@@ -45,6 +46,32 @@ class _DB:
         assert name == "users"
         return _Collection(self.users)
 
+from redis.exceptions import RedisError
+from unittest.mock import AsyncMock # already imported
+
+# Functions to simulate failure in store_session, forcing fallback
+async def mock_hset(*args, **kwargs):
+    # This simulates a connection error, forcing the store_session 'except' block.
+    # This ensures the session logic correctly uses memory_sessions in the test.
+    raise RedisError("Mocked Redis Failure for testing") 
+    
+class MockRedisClient:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    # Use AsyncMock directly for all async methods in your server file
+    # Set the side_effect to RedisError to trigger the 'except' block in store_session
+    hset = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
+    expire = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
+    delete = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
+
+    async def hgetall(self, *args, **kwargs):
+        return {}
+    
+    @classmethod
+    def Redis(cls, *args, **kwargs):
+        return cls() 
+
 # ------------------ Fixture ------------------
 @pytest.fixture
 def load_app_with_env():
@@ -53,10 +80,12 @@ def load_app_with_env():
         "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"
     }
 
+
     with patch.dict(os.environ, env, clear=False), \
          patch("firebase_admin.initialize_app", lambda *a, **k: None), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
-         patch("firebase_admin.firestore.client", lambda: object()):
+         patch("firebase_admin.firestore.client", lambda: object()), \
+            patch("redis.asyncio.Redis", MockRedisClient.Redis):
 
         # import after patching
         from src.server import server as appmod
