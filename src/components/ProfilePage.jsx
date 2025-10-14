@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
 
 function EditableField({ label, type = "text", value = "", placeholder = "", onSave, fieldType = "name" }) {
@@ -105,6 +105,73 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
 // add props for user and question data
 function Profile({ user }) {
   const { logout } = useAuth();
+  const [resumeFile, setResumeFile] = useState(null);
+  const [resumeUrl, setResumeUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Fetch existing resume on component mount
+  useEffect(() => {
+    fetchResume();
+  }, []);
+
+  const fetchResume = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/profile/resume", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setResumeUrl(data.resume_url);
+      }
+    } catch (error) {
+      console.error("Error fetching resume:", error);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type === "application/pdf") {
+      setResumeFile(file);
+    } else {
+      alert("Please select a PDF file");
+      e.target.value = null;
+    }
+  };
+
+  const handleUploadResume = async () => {
+    if (!resumeFile) {
+      alert("Please select a file first");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", resumeFile);
+
+      const response = await fetch("http://localhost:8000/api/profile/upload-resume", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to upload resume");
+      }
+
+      const data = await response.json();
+      setResumeUrl(data.resume_url);
+      setResumeFile(null);
+      alert("Resume uploaded successfully!");
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert(error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
   
   const deleteAccount = async () => {
     if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
@@ -217,8 +284,51 @@ function Profile({ user }) {
 
           <div>
             <h3 className="block font-medium mb-2">Resume</h3>
-            <div className="flex items-center space-x-3">
-              <input type="file" accept="application/pdf" />
+            <p className="text-sm text-gray-500 mb-3">Only PDF documents will be accepted</p>
+            <div className="space-y-3">
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileChange}
+                id="resume-upload"
+                className="hidden"
+              />
+              
+              {!resumeFile && (
+                <label
+                  htmlFor="resume-upload"
+                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700"
+                >
+                  {resumeUrl ? "Change Resume" : "Upload Resume"}
+                </label>
+              )}
+              
+              {resumeFile && (
+                <>
+                  <p className="text-sm text-gray-600">Selected: {resumeFile.name}</p>
+                  <button
+                    onClick={handleUploadResume}
+                    disabled={uploading}
+                    className="px-4 py-2 bg-green-600 text-white rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {uploading ? "Uploading..." : "Confirm Upload"}
+                  </button>
+                </>
+              )}
+              
+              {resumeUrl && !resumeFile && (
+                <div className="mt-3">
+                  <p className="text-sm text-green-600 mb-2">✓ Current resume: resume.pdf</p>
+                  <a
+                    href={resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline text-sm"
+                  >
+                    Download/View Resume
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
