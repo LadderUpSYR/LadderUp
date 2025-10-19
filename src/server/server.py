@@ -387,15 +387,15 @@ async def me(request: Request):
         await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
-    # Check if user is admin
-    is_admin = await is_admin(session_data["uid"])
+    # Check if user is admin. Not for now since the component is not in Firestore yet
+    # is_admin = await is_admin(session_data["uid"])
     
     return {
         "user": {
             "uid": session_data["uid"],
             "name": session_data["name"],
-            "email": session_data["email"],
-            "is_admin": is_admin
+            "email": session_data["email"]
+            #,"is_admin": is_admin
         }
     }
 
