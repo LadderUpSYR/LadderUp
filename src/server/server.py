@@ -387,7 +387,17 @@ async def me(request: Request):
         await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
-    return {"user": {"uid": session_data["uid"], "name": session_data["name"], "email": session_data["email"]}}
+    # Check if user is admin. Not for now since the component is not in Firestore yet
+    # is_admin = await is_admin(session_data["uid"])
+    
+    return {
+        "user": {
+            "uid": session_data["uid"],
+            "name": session_data["name"],
+            "email": session_data["email"]
+            #,"is_admin": is_admin
+        }
+    }
 
 
 
@@ -597,6 +607,64 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
     except Exception as e:
         print("Error uploading resume:", e)
         raise HTTPException(status_code=500, detail="Failed to upload resume")
+
+async def is_admin(uid: str) -> bool:
+    """Check if a user has admin privileges"""
+    try:
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+        if not user_doc.exists:
+            return False
+        user_data = user_doc.to_dict()
+        
+        # Hardcoded admin check - replace with your email for testing
+        ADMIN_EMAIL = "davidortiz2587@gmail.com"
+        return user_data.get("email") == ADMIN_EMAIL
+        
+    except Exception:
+        return False
+
+@app.get("/api/admin/users")
+async def get_all_users(request: Request):
+    """Get all users (admin only endpoint)"""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+    
+    # Check if user is admin
+    if not await is_admin(uid):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        # Get all users from Firestore
+        users_ref = db.collection("users")
+        users = users_ref.stream()
+        
+        # Convert to list of dicts, excluding sensitive fields
+        user_list = []
+        for user in users:
+            user_data = user.to_dict()
+            # Exclude sensitive information
+            safe_user = {
+                "uid": user_data.get("uid"),
+                "name": user_data.get("name"),
+                "email": user_data.get("email"),
+                "questions": user_data.get("questions", []),
+                "auth_provider": user_data.get("auth_provider"),
+                "created_at": user_data.get("created_at")
+            }
+            user_list.append(safe_user)
+        
+        return {"users": user_list}
+    except Exception as e:
+        print("Error fetching users:", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
 
 @app.get("/api/profile/resume")
 async def get_resume(request: Request):
