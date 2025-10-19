@@ -337,7 +337,21 @@ function Profile({ user }) {
           Signed in as: {user?.name || user?.email}
         </div>
 
-        <div className="mt-4">
+        <div className="mt-4 space-y-3">
+          <button
+            onClick={() => {
+              try {
+                window.history.pushState({}, '', '/matchmaking');
+                window.location.reload();
+              } catch(e) {
+                window.location.pathname = '/matchmaking';
+              }
+            }}
+            className="w-full px-3 py-2 bg-gradient-to-r from-sky-600 to-blue-500 text-white font-semibold rounded hover:shadow-lg transition-all duration-300"
+          >
+            Start Matchmaking
+          </button>
+          
           <button
             onClick={() => {
               const ok = window.confirm("Are you sure you want to sign out?");
@@ -355,7 +369,7 @@ function Profile({ user }) {
                 // noop
               }
             }}
-            className="w-full mt-3 px-3 py-2 bg-gray-200 text-slate-900 rounded"
+            className="w-full px-3 py-2 bg-gray-200 text-slate-900 rounded"
           >
             Sign Out
           </button>
