@@ -3,6 +3,7 @@ import asyncio
 import json
 from .matchmaking import enqueue_player, try_match_players, listen_for_match
 from .server import get_session
+from .match_room import match_room_bp
 
 ws_bp = Blueprint("ws", __name__)
 
@@ -79,3 +80,4 @@ async def stop_tasks():
         pass
 
 app.register_blueprint(ws_bp)
+app.register_blueprint(match_room_bp)
