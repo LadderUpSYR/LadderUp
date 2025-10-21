@@ -20,6 +20,9 @@ async def try_match_players():
         p1 = await redis_client.lpop(MATCH_QUEUE)
         p2 = await redis_client.lpop(MATCH_QUEUE)
 
+        p1_uid = p1.decode()
+        p2_uid = p2.decode()
+
 
         # match found; match creation hook needs to be implemented
         # create a game session p1 p2 timestamp

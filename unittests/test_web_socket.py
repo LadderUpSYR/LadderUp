@@ -16,6 +16,9 @@ class MockRedisClient:
         self.lists = {}
         self.pubsub_messages = []
         self.store = {}
+        self.hash_store = {}
+        self.expiry = {}
+        self.sets = {}  # Add this for set operations
         
     async def rpush(self, key, value):
         if key not in self.lists:
@@ -36,8 +39,51 @@ class MockRedisClient:
         return 1
 
     async def hgetall(self, key):
-        return self.store.get(key, {})
-
+        return self.hash_store.get(key, {})
+    
+    async def hset(self, key, field=None, value=None, mapping=None):
+        """Mock Redis hset for storing hash fields"""
+        if key not in self.hash_store:
+            self.hash_store[key] = {}
+        
+        if mapping:
+            self.hash_store[key].update(mapping)
+            return len(mapping)
+        elif field is not None:
+            self.hash_store[key][field] = value
+            return 1
+        return 0
+    
+    async def hget(self, key, field):
+        """Mock Redis hget for retrieving hash fields"""
+        return self.hash_store.get(key, {}).get(field)
+    
+    async def expire(self, key, seconds):
+        """Mock Redis expire for setting key expiration"""
+        self.expiry[key] = seconds
+        return 1
+    
+    async def sadd(self, key, *values):
+        """Mock Redis sadd for adding to sets"""
+        if key not in self.sets:
+            self.sets[key] = set()
+        self.sets[key].update(values)
+        return len(values)
+    
+    async def srem(self, key, *values):
+        """Mock Redis srem for removing from sets"""
+        if key not in self.sets:
+            return 0
+        removed = 0
+        for value in values:
+            if value in self.sets[key]:
+                self.sets[key].remove(value)
+                removed += 1
+        return removed
+    
+    async def smembers(self, key):
+        """Mock Redis smembers for getting all set members"""
+        return self.sets.get(key, set())
     
     async def time(self):
         return [1234567890, 0]
@@ -74,19 +120,26 @@ def load_ws_app():
     
     mock_redis_client = MockRedisClient()
     
+    # Create a mock Firebase app
+    mock_firebase_app = MagicMock()
+    
     with patch.dict(os.environ, env, clear=False), \
          patch("redis.asyncio.Redis", return_value=mock_redis_client), \
-            patch("firebase_admin.initialize_app", lambda *a, **k: None), \
+         patch("firebase_admin.initialize_app", return_value=mock_firebase_app), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
-         patch("firebase_admin.firestore.client", lambda: object()):
+         patch("firebase_admin.firestore.client", lambda: object()), \
+         patch("firebase_admin.storage.bucket", return_value=MagicMock()):
         
         # Import after patching
         from src.server.websocketserver import app, SESSION_COOKIE_NAME
         from src.server.redis_client import redis_client
         
-        # Replace redis_client in matchmaking module
+        # Replace redis_client in both matchmaking and match_room modules
         import src.server.matchmaking as matchmaking_mod
+        import src.server.match_room as match_room_mod
+        
         matchmaking_mod.redis_client = mock_redis_client
+        match_room_mod.redis_client = mock_redis_client  # Add this line
     
     return app, SESSION_COOKIE_NAME, mock_redis_client
 
