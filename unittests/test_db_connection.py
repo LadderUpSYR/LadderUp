@@ -20,6 +20,11 @@ def test_firebase_connection():
     dotenv_path = Path('.env')
     load_dotenv(dotenv_path=dotenv_path)
 
+    # Clean up any existing Firebase apps from previous test runs
+    try:
+        firebase_admin.delete_app(firebase_admin.get_app("test_app_1"))
+    except:
+        pass  # App doesn't exist yet, that's fine
 
      # Initialize Firebase Admin
 
@@ -27,7 +32,7 @@ def test_firebase_connection():
     firebase_admin.initialize_app(cred, name="test_app_1")
 
 
-    db = firestore.client()
+    db = firestore.client(app=firebase_admin.get_app("test_app_1"))
 
     uid = "TESToPtzAR7joj2J7DDAtYRt"
         # Check Firestore for user profile
@@ -39,5 +44,8 @@ def test_firebase_connection():
     assert profile is not None
     assert profile.userName is not None
     assert profile.userName == "John Doe"
+    
+    # Clean up after test
+    firebase_admin.delete_app(firebase_admin.get_app("test_app_1"))
 
 

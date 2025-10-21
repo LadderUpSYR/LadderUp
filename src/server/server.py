@@ -171,6 +171,7 @@ async def login(data: dict):
                 "name": name,
                 "email": email,
                 "questions": [],
+                "answered_questions": [],
                 "auth_provider": "google",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -254,6 +255,7 @@ async def signup(data: SignupRequest):
             "password_hash": password_hash, 
             "created_at": datetime.now(timezone.utc).isoformat(),
             "questions": [],
+            "answered_questions": [],
             "auth_provider": "email" # new field needs to be reflected in firestore db now
         }
         
@@ -435,12 +437,20 @@ async def getQuestion(data: QuestionRequest):
 async def getRandomQuestion():
     print("getRandomQuestion endpoint called")
     try:
-        questions = db.collection("questions").stream() # is this way too much data to stream...?
-        all_questions = [q.to_dict() for q in questions]
+        questions_ref = db.collection("questions")
+        questions = questions_ref.stream()
+        
+        # Get all questions with their IDs
+        all_questions = []
+        for q in questions:
+            question_data = q.to_dict()
+            question_data["questionId"] = q.id  # Add the document ID
+            all_questions.append(question_data)
 
         if not all_questions:
             # default question if DB empty
             dicti = {
+                "questionId": "default-1",
                 "answerCriteria": "This question should follow the STAR principle...",
                 "avgScore": 1,
                 "numAttempts": 0,
@@ -454,6 +464,80 @@ async def getRandomQuestion():
     except Exception as e:
         print("Error fetching random question:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch random question")
+
+class SubmitAnswerRequest(BaseModel):
+    questionId: str
+    question: str
+    answer: str
+    score: float
+
+@app.post("/api/question/submit")
+async def submit_answer(request: Request, data: SubmitAnswerRequest):
+    """Submit an answer to a question and record it in the user's profile"""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    # Validate inputs
+    if not data.question or not data.answer:
+        raise HTTPException(status_code=400, detail="Question and answer are required")
+    
+    if data.score < 0 or data.score > 10:
+        raise HTTPException(status_code=400, detail="Score must be between 0 and 10")
+
+    try:
+        # Get user's current profile
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        answered_questions = user_data.get("answered_questions", [])
+
+        # Create new answer record
+        answer_record = {
+            "questionId": data.questionId,
+            "question": data.question,
+            "answer": data.answer,
+            "score": data.score,
+            "date": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Check if question was already answered - update with latest score
+        existing_index = None
+        for i, q in enumerate(answered_questions):
+            if q.get("questionId") == data.questionId:
+                existing_index = i
+                break
+        
+        if existing_index is not None:
+            # Update existing answer with new score (keeping history of most recent attempt)
+            answered_questions[existing_index] = answer_record
+        else:
+            # Add new answer
+            answered_questions.append(answer_record)
+
+        # Update user profile
+        user_ref.update({"answered_questions": answered_questions})
+
+        return {
+            "msg": "Answer submitted successfully",
+            "answer_record": answer_record,
+            "total_answered": len(answered_questions)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error submitting answer:", e)
+        raise HTTPException(status_code=500, detail="Failed to submit answer")
 
 class UpdateProfileRequest(BaseModel):
     name: str
@@ -656,6 +740,7 @@ async def get_all_users(request: Request):
                 "name": user_data.get("name"),
                 "email": user_data.get("email"),
                 "questions": user_data.get("questions", []),
+                "answered_questions": user_data.get("answered_questions", []),
                 "auth_provider": user_data.get("auth_provider"),
                 "created_at": user_data.get("created_at")
             }
@@ -699,6 +784,48 @@ async def get_resume(request: Request):
     except Exception as e:
         print("Error fetching resume:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch resume")
+
+@app.get("/api/profile/answered-questions")
+async def get_answered_questions(request: Request):
+    """Get all answered questions for the authenticated user"""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    try:
+        # Get user profile
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        answered_questions = user_data.get("answered_questions", [])
+        
+        # Sort by date (most recent first)
+        answered_questions.sort(key=lambda x: x.get("date", ""), reverse=True)
+        
+        # Calculate statistics
+        total_answered = len(answered_questions)
+        average_score = sum(q.get("score", 0) for q in answered_questions) / total_answered if total_answered > 0 else 0
+        
+        return {
+            "answered_questions": answered_questions,
+            "total_answered": total_answered,
+            "average_score": round(average_score, 2)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error fetching answered questions:", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch answered questions")
 
 @app.get("/api/matchmaking/queue-status")
 async def get_queue_status():
