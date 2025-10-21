@@ -103,6 +103,8 @@ function App() {
           // Route based on pathname
           window.location.pathname === "/profile" ? (
             <Profile user={user} />
+          ) : window.location.pathname === "/question-debug" ? (
+            <QuestionDebug />
           ) : window.location.pathname === "/matchmaking" ? (
             <MatchmakingLandingPage 
               onBack={() => {

@@ -108,10 +108,15 @@ function Profile({ user }) {
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeUrl, setResumeUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [answeredQuestions, setAnsweredQuestions] = useState([]);
+  const [totalAnswered, setTotalAnswered] = useState(0);
+  const [averageScore, setAverageScore] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch existing resume on component mount
+  // Fetch existing resume and answered questions on component mount
   useEffect(() => {
     fetchResume();
+    fetchAnsweredQuestions();
   }, []);
 
   const fetchResume = async () => {
@@ -126,6 +131,26 @@ function Profile({ user }) {
       }
     } catch (error) {
       console.error("Error fetching resume:", error);
+    }
+  };
+
+  const fetchAnsweredQuestions = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("http://localhost:8000/api/profile/answered-questions", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAnsweredQuestions(data.answered_questions || []);
+        setTotalAnswered(data.total_answered || 0);
+        setAverageScore(data.average_score || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching answered questions:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -211,20 +236,19 @@ function Profile({ user }) {
         <div className="mb-6">
           <label className="font-medium">Interview readiness meter:</label>
           <div className="mt-2 w-full bg-gray-200 rounded h-4">
-            <div className="h-4 rounded bg-blue-500" style={{ width: `0%` }} />
+            <div 
+              className="h-4 rounded bg-blue-500" 
+              style={{ width: `${Math.min(averageScore * 10, 100)}%` }} 
+            />
+          </div>
+          <div className="text-sm text-gray-600 mt-1">
+            Average Score: {averageScore.toFixed(1)} / 10
           </div>
         </div>
 
         <div className="mb-6">
           <label className="font-medium"># of questions answered:</label>
-          <div className="mt-1 text-gray-600">(not populated)</div>
-        </div>
-
-        <div className="mb-6">
-          <label className="font-medium">Score of each question:</label>
-          <ul className="list-disc list-inside text-gray-600 mt-1">
-            <li>(no scores yet)</li>
-          </ul>
+          <div className="mt-1 text-gray-600">{totalAnswered}</div>
         </div>
 
         <div>
@@ -236,14 +260,40 @@ function Profile({ user }) {
                   <th className="px-6 py-2 border-b">Date</th>
                   <th className="px-8 py-2 border-b">Question</th>
                   <th className="px-2 py-2 border-b">Answer</th>
+                  <th className="px-2 py-2 border-b">Score</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
-                    (no previous answers)
-                  </td>
-                </tr>
+                {loading ? (
+                  <tr>
+                    <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
+                      Loading...
+                    </td>
+                  </tr>
+                ) : answeredQuestions.length > 0 ? (
+                  answeredQuestions.map((q, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 border-b text-sm">
+                        {new Date(q.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-2 border-b text-sm">
+                        {q.question}
+                      </td>
+                      <td className="px-4 py-2 border-b text-sm max-w-md truncate">
+                        {q.answer}
+                      </td>
+                      <td className="px-4 py-2 border-b text-sm font-semibold">
+                        {q.score}/10
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
+                      (no previous answers)
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -338,6 +388,20 @@ function Profile({ user }) {
         </div>
 
         <div className="mt-4 space-y-3">
+          <button
+            onClick={() => {
+              try {
+                window.history.pushState({}, '', '/question-debug');
+                window.location.reload();
+              } catch(e) {
+                window.location.pathname = '/question-debug';
+              }
+            }}
+            className="w-full px-3 py-2 bg-purple-600 text-white font-semibold rounded hover:bg-purple-700 transition-all duration-300"
+          >
+            Question Debug
+          </button>
+
           <button
             onClick={() => {
               try {
