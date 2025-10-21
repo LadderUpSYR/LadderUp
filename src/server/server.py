@@ -699,3 +699,33 @@ async def get_resume(request: Request):
     except Exception as e:
         print("Error fetching resume:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch resume")
+
+@app.get("/api/matchmaking/queue-status")
+async def get_queue_status():
+    """Get the current matchmaking queue status and estimated wait time"""
+    try:
+        queue_size = await redis_client.llen("match_queue")
+        
+        # Calculate estimated wait time based on queue size
+        # Assuming average match time is 2 seconds per pair
+        if queue_size == 0:
+            estimated_wait_seconds = 5  # Base wait time when queue is empty
+        elif queue_size == 1:
+            estimated_wait_seconds = 10  # Waiting for one more player
+        else:
+            # If multiple people in queue, matches happen quickly
+            estimated_wait_seconds = 3
+        
+        return {
+            "queue_size": queue_size,
+            "estimated_wait_seconds": estimated_wait_seconds,
+            "estimated_wait_text": f"{estimated_wait_seconds}s" if estimated_wait_seconds < 60 else f"{estimated_wait_seconds // 60}m"
+        }
+    except Exception as e:
+        print(f"Error fetching queue status: {e}")
+        # Return default values if Redis is unavailable
+        return {
+            "queue_size": 0,
+            "estimated_wait_seconds": 10,
+            "estimated_wait_text": "10s"
+        }
