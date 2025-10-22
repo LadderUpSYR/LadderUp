@@ -408,14 +408,14 @@ async def me(request: Request):
         await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
-    is_admin = await is_admin(session_data["uid"])
+    user_is_admin = await is_admin(session_data["uid"])
     
     return {
         "user": {
             "uid": session_data["uid"],
             "name": session_data["name"],
             "email": session_data["email"],
-            "is_admin": is_admin
+            "is_admin": user_is_admin
         }
     }
 
