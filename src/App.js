@@ -6,6 +6,7 @@ import QuestionDebug from "./components/QuestionDebug";
 import Profile from "./components/ProfilePage";
 import LandingPage from "./components/LandingPage";
 import MatchmakingLandingPage from "./components/MatchmakingLandingPage";
+import AdminPage from "./components/AdminPage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 import MatchmakingPage from "./components/MatchmakingPage";
@@ -116,6 +117,13 @@ function App() {
                 }
               }}
             />
+          ) : window.location.pathname === "/admin" ? (
+            user?.is_admin ? (
+              <AdminPage />
+            ) : (
+              // Redirect non-admin users to profile
+              window.location.replace('/profile')
+            )
           ) : (
             <div className="min-h-screen w-full flex flex-col items-center justify-center">
               <p>You are logged in as {user.name}</p>
