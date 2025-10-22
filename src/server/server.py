@@ -181,8 +181,19 @@ async def login(data: dict):
         session_token = secrets.token_urlsafe(32)
         await store_session(session_token, build_session_payload(uid, name, email))
 
+        # Get admin status
+        is_admin = profile.get("is_admin", False)
+        
         # Return user info + set cookie
-        response = JSONResponse({"user": {"uid": uid, "name": name, "email": email}, "msg": "User Exists" if userExisted else"New user created"})
+        response = JSONResponse({
+            "user": {
+                "uid": uid,
+                "name": name,
+                "email": email,
+                "is_admin": is_admin
+            },
+            "msg": "User Exists" if userExisted else "New user created"
+        })
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_token,
@@ -333,9 +344,17 @@ async def login_email(data: LoginEmailRequest):
         session_token = secrets.token_urlsafe(32)
         await store_session(session_token, build_session_payload(uid, name, email))
 
+        # Get admin status
+        is_admin = user_data.get("is_admin", False)
+
         # Return user info + set cookie
         response = JSONResponse({
-            "user": {"uid": uid, "name": name, "email": email},
+            "user": {
+                "uid": uid,
+                "name": name,
+                "email": email,
+                "is_admin": is_admin
+            },
             "msg": "Login successful"
         })
         response.set_cookie(
@@ -389,15 +408,14 @@ async def me(request: Request):
         await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")
 
-    # Check if user is admin. Not for now since the component is not in Firestore yet
-    # is_admin = await is_admin(session_data["uid"])
+    is_admin = await is_admin(session_data["uid"])
     
     return {
         "user": {
             "uid": session_data["uid"],
             "name": session_data["name"],
-            "email": session_data["email"]
-            #,"is_admin": is_admin
+            "email": session_data["email"],
+            "is_admin": is_admin
         }
     }
 
@@ -701,9 +719,8 @@ async def is_admin(uid: str) -> bool:
             return False
         user_data = user_doc.to_dict()
         
-        # Hardcoded admin check - replace with your email for testing
-        ADMIN_EMAIL = "davidortiz2587@gmail.com"
-        return user_data.get("email") == ADMIN_EMAIL
+        # Check the is_admin field from Firebase
+        return user_data.get("is_admin", False)
         
     except Exception:
         return False

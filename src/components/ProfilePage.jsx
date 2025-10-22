@@ -416,6 +416,22 @@ function Profile({ user }) {
             Start Matchmaking
           </button>
           
+          {user?.is_admin && (
+            <button
+              onClick={() => {
+                try {
+                  window.history.pushState({}, '', '/admin');
+                  window.location.reload();
+                } catch(e) {
+                  window.location.pathname = '/admin';
+                }
+              }}
+              className="w-full px-3 py-2 bg-red-600 text-white font-semibold rounded hover:bg-red-700 transition-all duration-300"
+            >
+              Admin Dashboard
+            </button>
+          )}
+
           <button
             onClick={() => {
               const ok = window.confirm("Are you sure you want to sign out?");

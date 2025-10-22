@@ -1,16 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
-
+import EditableField from "./ProfilePage";
 
 function AdminPage() {
+  const { user, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [flaggedReasons, setFlaggedReasons] = useState({}); // { uid: reason }
+  const [resumeFile, setResumeFile] = useState(null);
+  const [resumeUrl, setResumeUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchUsers();
+    fetchResume();
   }, []);
+
+  const fetchResume = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/profile/resume", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setResumeUrl(data.resume_url);
+      }
+    } catch (error) {
+      console.error("Error fetching resume:", error);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -60,8 +80,21 @@ function AdminPage() {
       <div className="max-w-6xl mx-auto bg-white shadow-md rounded-lg p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <div className="text-sm text-gray-500">
-            Total Users: {users.length}
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-500">Total Users: {users.length}</div>
+            <button
+              onClick={() => {
+                try {
+                  window.history.pushState({}, '', '/profile');
+                  window.location.reload();
+                } catch (e) {
+                  window.location.pathname = '/profile';
+                }
+              }}
+              className="px-3 py-1 bg-gray-200 text-slate-900 rounded hover:bg-gray-300 text-sm"
+            >
+              Back to Profile
+            </button>
           </div>
         </div>
 
