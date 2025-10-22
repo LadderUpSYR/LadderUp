@@ -25,7 +25,8 @@ def test_profilepage_shows_user_with_answered_question(load_app_with_env):
                 "score": 4,
                 "date": "2025-10-05"
             }
-        ]
+        ],
+        "is_admin": False
     }
     
     # 💡 Data that Redis needs to return for a successful /api/auth/me
