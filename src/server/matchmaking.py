@@ -14,6 +14,10 @@ from .match_room import create_match_room
 async def enqueue_player(user_id):
     await redis_client.rpush(MATCH_QUEUE, user_id)
 
+async def dequeue_player(user_id):
+    """Remove a player from the matchmaking queue"""
+    await redis_client.lrem(MATCH_QUEUE, 0, user_id)
+
 async def try_match_players():
     queue_size = await redis_client.llen(MATCH_QUEUE)
     if queue_size >= 2:

@@ -188,8 +188,16 @@ async def create_match_room(match_id: str, player1_uid: str, player2_uid: str) -
     
     room_key = f"{ROOM_PREFIX}{match_id}"
     
-    # Store room data in Redis hash
-    await redis_client.hset(room_key, mapping=asdict(room))
+    # Store room data in Redis hash (filter out None values and convert bools to strings)
+    room_dict = {}
+    for k, v in asdict(room).items():
+        if v is not None:
+            # Convert boolean to string for Redis
+            if isinstance(v, bool):
+                room_dict[k] = str(v)
+            else:
+                room_dict[k] = v
+    await redis_client.hset(room_key, mapping=room_dict)
     await redis_client.expire(room_key, ROOM_TTL_SECONDS)
     
     # Add to active rooms set
@@ -483,7 +491,8 @@ async def room_websocket(match_id: str):
     await websocket.send(json.dumps(connection_message))
     
     try:
-        async for message in websocket:
+        while True:
+            message = await websocket.receive()
             # Handle different message types
             try:
                 if isinstance(message, bytes):
@@ -520,6 +529,56 @@ async def room_websocket(match_id: str):
             "type": "player_left",
             "player": player_uid
         })
+
+
+async def handle_room_message(match_id: str, player_uid: str, data: dict):
+    """
+    Handle JSON messages from players in the match room
+    
+    Supported message types:
+    - ready: Player marks themselves as ready
+    - chat: Send a chat message to the room
+    - signal: WebRTC signaling data
+    
+    Args:
+        match_id: The room ID
+        player_uid: The player sending the message
+        data: The message data dict
+    """
+    message_type = data.get("type")
+    
+    if message_type == "ready":
+        # Player is marking themselves ready
+        result = await set_player_ready(match_id, player_uid)
+        
+        # Broadcast ready status to both players
+        await broadcast_to_room(match_id, {
+            "type": "player_ready",
+            "player": player_uid,
+            "both_ready": result["both_ready"],
+            "question": result.get("question"),
+            "match_duration_seconds": MATCH_DURATION_SECONDS if result["both_ready"] else None
+        })
+    
+    elif message_type == "chat":
+        # Broadcast chat message to room
+        await broadcast_to_room(match_id, {
+            "type": "chat",
+            "player": player_uid,
+            "message": data.get("message", "")
+        })
+    
+    elif message_type == "signal":
+        # WebRTC signaling (offer, answer, ICE candidates)
+        # Forward to the other player
+        await broadcast_to_room(match_id, {
+            "type": "signal",
+            "from": player_uid,
+            "signal": data.get("signal")
+        }, exclude_player=player_uid)
+    
+    else:
+        print(f"Unknown message type: {message_type}")
 
 
 async def handle_video_stream(match_id: str, player_uid: str, video_chunk: bytes):
