@@ -1,7 +1,8 @@
 from quart import Blueprint, websocket, Quart
+from quart_cors import cors
 import asyncio
 import json
-from .matchmaking import enqueue_player, try_match_players, listen_for_match
+from .matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
 from .server import get_session
 from .match_room import match_room_bp
 
@@ -9,6 +10,9 @@ ws_bp = Blueprint("ws", __name__)
 
 SESSION_COOKIE_NAME = "session_token"
 app = Quart(__name__)
+
+# Configure CORS to allow requests from the React frontend
+app = cors(app, allow_origin="http://localhost:3000", allow_credentials=True)
 
 @app.route("/health")
 async def health_check():
@@ -55,6 +59,10 @@ async def join_websocket():
 
     except asyncio.CancelledError:
         print(f"User {user_id} disconnected from matchmaking")
+    finally:
+        # Remove player from queue when they disconnect
+        await dequeue_player(user_id)
+        print(f"User {user_id} removed from queue")
 
 
 # --- Matchmaking Background Task ---
