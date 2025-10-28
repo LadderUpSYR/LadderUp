@@ -70,7 +70,19 @@ function App() {
     setShowAuthForms(true);
   };
 
-  if (loading) return <p>"Loading Splash Anim"</p>;
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            <div className="absolute inset-0 border-4 border-sky-200 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-sky-600 rounded-full border-t-transparent animate-spin"></div>
+          </div>
+          <h2 className="text-xl font-bold text-sky-600">LadderUp</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>

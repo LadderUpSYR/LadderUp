@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useMatchmaking } from './useMatchmaking';
+import { useDarkMode } from '../utils/useDarkMode';
 
 const MatchmakingLandingPage = ({ onBack }) => {
   const { status, partners, matchId, joinQueue, leaveQueue } = useMatchmaking();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [queueStatus, setQueueStatus] = useState({
     queue_size: 0,
     estimated_wait_seconds: 10,
@@ -10,7 +12,6 @@ const MatchmakingLandingPage = ({ onBack }) => {
   });
   const [showAcceptDialog, setShowAcceptDialog] = useState(false);
   const [acceptTimer, setAcceptTimer] = useState(10);
-  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Fetch queue status periodically
   useEffect(() => {
@@ -179,7 +180,7 @@ const MatchmakingLandingPage = ({ onBack }) => {
               }`}>LadderUp Matchmaking</h1>
             </div>
             <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
+              onClick={toggleDarkMode}
               className={`relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                 isDarkMode 
                   ? 'bg-sky-blue focus:ring-sky-blue' 
