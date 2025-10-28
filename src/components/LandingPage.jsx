@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useDarkMode } from '../utils/useDarkMode';
 
 const LandingPage = ({ onSignIn, onSignUp }) => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState({});
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -77,7 +78,7 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
             <div className="flex items-center space-x-4">
               {/* Theme Toggle Button */}
               <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
+                onClick={toggleDarkMode}
                 className={`relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   isDarkMode 
                     ? 'bg-sky-blue focus:ring-sky-blue' 

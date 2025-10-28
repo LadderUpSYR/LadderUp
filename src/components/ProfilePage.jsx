@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
+import { useDarkMode } from "../utils/useDarkMode";
 
-function EditableField({ label, type = "text", value = "", placeholder = "", onSave, fieldType = "name" }) {
+function EditableField({ label, type = "text", value = "", placeholder = "", onSave, fieldType = "name", isDarkMode }) {
   const { setUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value);
@@ -59,19 +60,32 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
   };
 
   return (
-    <div>
-      <label className="block font-medium">{label}</label>
+    <div className="mb-6">
+      <label className={`block font-medium transition-colors duration-500 ${
+        isDarkMode ? 'text-gray-300' : 'text-gray-700'
+      }`}>{label}</label>
       {editing ? (
         <>
           <input
-            className="mt-1 border rounded px-2 py-1 w-full"
+            className={`mt-1 border rounded-lg px-3 py-2 w-full transition-colors duration-500 ${
+              isDarkMode 
+                ? 'bg-gray-800 border-gray-600 text-white focus:border-sky-blue' 
+                : 'bg-white border-gray-300 text-gray-900 focus:border-sky-600'
+            } focus:outline-none focus:ring-2 focus:ring-opacity-50`}
             type={type}
             value={localValue}
             placeholder={placeholder}
             onChange={(e) => setLocalValue(e.target.value)}
           />
           <div className="mt-2 space-x-2">
-            <button onClick={save} className="px-3 py-1 bg-blue-600 text-white rounded">
+            <button 
+              onClick={save} 
+              className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                isDarkMode
+                  ? 'bg-sky-blue text-black hover:bg-sky-400 shadow-sky-blue/50'
+                  : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/30'
+              }`}
+            >
               Save
             </button>
             <button
@@ -79,7 +93,11 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
                 setEditing(false);
                 setLocalValue(value);
               }}
-              className="px-3 py-1 bg-gray-200 rounded"
+              className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
+                isDarkMode
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
             >
               Cancel
             </button>
@@ -87,12 +105,18 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
         </>
       ) : (
         <div className="mt-1 flex items-center justify-between">
-          <div className="text-gray-700">
-            {value || <span className="text-gray-400">{placeholder}</span>}
+          <div className={`transition-colors duration-500 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            {value || <span className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}>{placeholder}</span>}
           </div>
           <button
             onClick={() => setEditing(true)}
-            className="ml-3 px-2 py-1 bg-blue-600 text-white rounded"
+            className={`ml-3 px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
+              isDarkMode
+                ? 'bg-sky-blue text-black hover:bg-sky-400 shadow-sky-blue/50'
+                : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/30'
+            }`}
           >
             Edit
           </button>
@@ -105,6 +129,7 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
 // add props for user and question data
 function Profile({ user }) {
   const { logout } = useAuth();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeUrl, setResumeUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -229,230 +254,366 @@ function Profile({ user }) {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-gray-100 p-6">
-      <div className="flex-1 bg-white shadow-md rounded-lg p-6 mr-6">
-        <h1 className="text-2xl font-bold mb-4">User Stats</h1>
-
-        <div className="mb-6">
-          <label className="font-medium">Interview readiness meter:</label>
-          <div className="mt-2 w-full bg-gray-200 rounded h-4">
-            <div 
-              className="h-4 rounded bg-blue-500" 
-              style={{ width: `${Math.min(averageScore * 10, 100)}%` }} 
-            />
-          </div>
-          <div className="text-sm text-gray-600 mt-1">
-            Average Score: {averageScore.toFixed(1)} / 10
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <label className="font-medium"># of questions answered:</label>
-          <div className="mt-1 text-gray-600">{totalAnswered}</div>
-        </div>
-
-        <div>
-          <label className="font-medium">Previous answers:</label>
-          <div className="mt-2 overflow-x-auto">
-            <table className="min-w-full text-left border border-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-2 border-b">Date</th>
-                  <th className="px-8 py-2 border-b">Question</th>
-                  <th className="px-2 py-2 border-b">Answer</th>
-                  <th className="px-2 py-2 border-b">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
-                      Loading...
-                    </td>
-                  </tr>
-                ) : answeredQuestions.length > 0 ? (
-                  answeredQuestions.map((q, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 border-b text-sm">
-                        {new Date(q.date).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-2 border-b text-sm">
-                        {q.question}
-                      </td>
-                      <td className="px-4 py-2 border-b text-sm max-w-md truncate">
-                        {q.answer}
-                      </td>
-                      <td className="px-4 py-2 border-b text-sm font-semibold">
-                        {q.score}/10
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="px-4 py-2 border-b text-gray-400" colSpan={4}>
-                      (no previous answers)
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+    <div className={`min-h-screen w-full relative overflow-hidden transition-colors duration-500 ${
+      isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+    }`}>
+      {/* Animated background particles */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {[...Array(50)].map((_, i) => (
+          <div
+            key={i}
+            className={`absolute w-1 h-1 rounded-full opacity-20 animate-float ${
+              isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
+            }`}
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 5}s`,
+              animationDuration: `${5 + Math.random() * 10}s`
+            }}
+          />
+        ))}
       </div>
 
-      <div className="w-96 bg-white shadow-md rounded-lg p-6">
-        <h2 className="text-xl font-semibold mb-4">User Settings</h2>
-        <div className="space-y-6">
-          <EditableField
-            label="Change username"
-            value={user?.name || ""}
-            placeholder="New username"
-            fieldType="name"
-            onSave={(v) => console.log("Save username:", v)}
-          />
+      {/* Navigation */}
+      <nav className={`shadow-lg border-b transition-colors duration-500 ${
+        isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'
+      }`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <h1 className={`text-2xl font-bold transition-colors duration-500 ${
+              isDarkMode ? 'text-sky-blue' : 'text-sky-600'
+            }`}>LadderUp Profile</h1>
+            <button
+              onClick={toggleDarkMode}
+              className={`relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                isDarkMode 
+                  ? 'bg-sky-blue focus:ring-sky-blue' 
+                  : 'bg-gray-300 focus:ring-sky-600'
+              }`}
+              aria-label="Toggle theme"
+            >
+              <span
+                className={`inline-block w-6 h-6 transform transition-transform duration-300 ease-in-out rounded-full shadow-lg ${
+                  isDarkMode 
+                    ? 'translate-x-9 bg-gray-900' 
+                    : 'translate-x-1 bg-white'
+                }`}
+              >
+                <span className="flex items-center justify-center h-full text-xs">
+                  {isDarkMode ? '🌙' : '☀️'}
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </nav>
 
-          <EditableField
-            label="Change password"
-            type="password"
-            value={""}
-            placeholder="New password"
-            fieldType="password"
-            onSave={(v) => console.log("Save password:", v)}
-          />
+      {/* Main Content */}
+      <div className="relative z-10 flex max-w-7xl mx-auto p-6 gap-6">
+        {/* Left Panel - User Stats */}
+        <div className={`flex-1 rounded-xl shadow-2xl border p-6 transition-colors duration-500 ${
+          isDarkMode 
+            ? 'bg-gradient-to-br from-gray-800 to-black border-gray-700' 
+            : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'
+        }`}>
+          <h2 className={`text-2xl font-bold mb-6 transition-colors duration-500 ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>User Stats</h2>
+
+          <div className="mb-8">
+            <label className={`font-semibold text-lg mb-3 block transition-colors duration-500 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>Interview Readiness Meter</label>
+            <div className={`w-full rounded-full h-6 overflow-hidden transition-colors duration-500 ${
+              isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+            }`}>
+              <div 
+                className="h-6 rounded-full bg-gradient-to-r from-sky-blue to-blue-500 transition-all duration-500 flex items-center justify-end pr-3"
+                style={{ width: `${Math.min(averageScore * 10, 100)}%` }} 
+              >
+                <span className="text-xs font-bold text-white">
+                  {averageScore.toFixed(1)}/10
+                </span>
+              </div>
+            </div>
+            <div className={`text-sm mt-2 transition-colors duration-500 ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-600'
+            }`}>
+              Average Score: {averageScore.toFixed(1)} / 10
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <label className={`font-semibold text-lg mb-2 block transition-colors duration-500 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}># of Questions Answered</label>
+            <div className={`text-3xl font-bold transition-colors duration-500 ${
+              isDarkMode ? 'text-sky-blue' : 'text-sky-600'
+            }`}>{totalAnswered}</div>
+          </div>
 
           <div>
-            <label className="block font-medium">Delete account</label>
-            <div className="mt-2">
+            <label className={`font-semibold text-lg mb-4 block transition-colors duration-500 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>Previous Answers</label>
+            <div className="overflow-x-auto rounded-lg">
+              <table className={`min-w-full text-left border transition-colors duration-500 ${
+                isDarkMode ? 'border-gray-700' : 'border-gray-200'
+              }`}>
+                <thead className={`transition-colors duration-500 ${
+                  isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+                }`}>
+                  <tr>
+                    <th className={`px-6 py-3 border-b font-semibold transition-colors duration-500 ${
+                      isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
+                    }`}>Date</th>
+                    <th className={`px-8 py-3 border-b font-semibold transition-colors duration-500 ${
+                      isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
+                    }`}>Question</th>
+                    <th className={`px-4 py-3 border-b font-semibold transition-colors duration-500 ${
+                      isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
+                    }`}>Answer</th>
+                    <th className={`px-4 py-3 border-b font-semibold transition-colors duration-500 ${
+                      isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
+                    }`}>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td className={`px-4 py-3 border-b transition-colors duration-500 ${
+                        isDarkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'
+                      }`} colSpan={4}>
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : answeredQuestions.length > 0 ? (
+                    answeredQuestions.map((q, idx) => (
+                      <tr key={idx} className={`transition-colors duration-300 ${
+                        isDarkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
+                      }`}>
+                        <td className={`px-4 py-3 border-b text-sm transition-colors duration-500 ${
+                          isDarkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-700'
+                        }`}>
+                          {new Date(q.date).toLocaleDateString()}
+                        </td>
+                        <td className={`px-4 py-3 border-b text-sm transition-colors duration-500 ${
+                          isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-900'
+                        }`}>
+                          {q.question}
+                        </td>
+                        <td className={`px-4 py-3 border-b text-sm max-w-md truncate transition-colors duration-500 ${
+                          isDarkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-700'
+                        }`}>
+                          {q.answer}
+                        </td>
+                        <td className={`px-4 py-3 border-b text-sm font-bold transition-colors duration-500 ${
+                          isDarkMode ? 'border-gray-700 text-sky-blue' : 'border-gray-200 text-sky-600'
+                        }`}>
+                          {q.score}/10
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className={`px-4 py-3 border-b transition-colors duration-500 ${
+                        isDarkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'
+                      }`} colSpan={4}>
+                        (no previous answers)
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - User Settings */}
+        <div className={`w-96 rounded-xl shadow-2xl border p-6 transition-colors duration-500 ${
+          isDarkMode 
+            ? 'bg-gradient-to-br from-gray-800 to-black border-gray-700' 
+            : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'
+        }`}>
+          <h2 className={`text-xl font-bold mb-6 transition-colors duration-500 ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>User Settings</h2>
+          
+          <div className="space-y-6">
+            <EditableField
+              label="Change username"
+              value={user?.name || ""}
+              placeholder="New username"
+              fieldType="name"
+              isDarkMode={isDarkMode}
+              onSave={(v) => console.log("Save username:", v)}
+            />
+
+            <EditableField
+              label="Change password"
+              type="password"
+              value={""}
+              placeholder="New password"
+              fieldType="password"
+              isDarkMode={isDarkMode}
+              onSave={(v) => console.log("Save password:", v)}
+            />
+
+            <div>
+              <label className={`block font-medium mb-3 transition-colors duration-500 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>Delete account</label>
               <button
                 onClick={deleteAccount}
-                className="px-3 py-1 bg-red-600 text-white rounded"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-600/30"
               >
                 Delete account
               </button>
             </div>
-          </div>
 
-          <div>
-            <h3 className="block font-medium mb-2">Resume</h3>
-            <p className="text-sm text-gray-500 mb-3">Only PDF documents will be accepted</p>
-            <div className="space-y-3">
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={handleFileChange}
-                id="resume-upload"
-                className="hidden"
-              />
-              
-              {!resumeFile && (
-                <label
-                  htmlFor="resume-upload"
-                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700"
-                >
-                  {resumeUrl ? "Change Resume" : "Upload Resume"}
-                </label>
-              )}
-              
-              {resumeFile && (
-                <>
-                  <p className="text-sm text-gray-600">Selected: {resumeFile.name}</p>
-                  <button
-                    onClick={handleUploadResume}
-                    disabled={uploading}
-                    className="px-4 py-2 bg-green-600 text-white rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+            <div>
+              <h3 className={`block font-medium mb-3 transition-colors duration-500 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>Resume</h3>
+              <p className={`text-sm mb-4 transition-colors duration-500 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-500'
+              }`}>Only PDF documents will be accepted</p>
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  id="resume-upload"
+                  className="hidden"
+                />
+                
+                {!resumeFile && (
+                  <label
+                    htmlFor="resume-upload"
+                    className={`inline-block px-4 py-2 rounded-lg cursor-pointer font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                      isDarkMode
+                        ? 'bg-sky-blue text-black hover:bg-sky-400 shadow-sky-blue/50'
+                        : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/30'
+                    }`}
                   >
-                    {uploading ? "Uploading..." : "Confirm Upload"}
-                  </button>
-                </>
-              )}
-              
-              {resumeUrl && !resumeFile && (
-                <div className="mt-3">
-                  <p className="text-sm text-green-600 mb-2">✓ Current resume: resume.pdf</p>
-                  <a
-                    href={resumeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline text-sm"
-                  >
-                    Download/View Resume
-                  </a>
-                </div>
-              )}
+                    {resumeUrl ? "Change Resume" : "Upload Resume"}
+                  </label>
+                )}
+                
+                {resumeFile && (
+                  <>
+                    <p className={`text-sm transition-colors duration-500 ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>Selected: {resumeFile.name}</p>
+                    <button
+                      onClick={handleUploadResume}
+                      disabled={uploading}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-green-600/30"
+                    >
+                      {uploading ? "Uploading..." : "Confirm Upload"}
+                    </button>
+                  </>
+                )}
+                
+                {resumeUrl && !resumeFile && (
+                  <div className="mt-3">
+                    <p className="text-sm text-green-600 mb-2 font-semibold">✓ Current resume: resume.pdf</p>
+                    <a
+                      href={resumeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`text-sm font-semibold transition-colors duration-300 ${
+                        isDarkMode ? 'text-sky-blue hover:text-sky-400' : 'text-sky-600 hover:text-sky-700'
+                      }`}
+                    >
+                      Download/View Resume →
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-6 text-sm text-gray-500">
-          Signed in as: {user?.name || user?.email}
-        </div>
+          <div className={`mt-6 text-sm transition-colors duration-500 ${
+            isDarkMode ? 'text-gray-500' : 'text-gray-500'
+          }`}>
+            Signed in as: {user?.name || user?.email}
+          </div>
 
-        <div className="mt-4 space-y-3">
-          <button
-            onClick={() => {
-              try {
-                window.history.pushState({}, '', '/question-debug');
-                window.location.reload();
-              } catch(e) {
-                window.location.pathname = '/question-debug';
-              }
-            }}
-            className="w-full px-3 py-2 bg-purple-600 text-white font-semibold rounded hover:bg-purple-700 transition-all duration-300"
-          >
-            Question Debug
-          </button>
-
-          <button
-            onClick={() => {
-              try {
-                window.history.pushState({}, '', '/matchmaking');
-                window.location.reload();
-              } catch(e) {
-                window.location.pathname = '/matchmaking';
-              }
-            }}
-            className="w-full px-3 py-2 bg-gradient-to-r from-sky-600 to-blue-500 text-white font-semibold rounded hover:shadow-lg transition-all duration-300"
-          >
-            Start Matchmaking
-          </button>
-          
-          {user?.is_admin && (
+          <div className="mt-6 space-y-3">
             <button
               onClick={() => {
                 try {
-                  window.history.pushState({}, '', '/admin');
+                  window.history.pushState({}, '', '/question-debug');
                   window.location.reload();
                 } catch(e) {
-                  window.location.pathname = '/admin';
+                  window.location.pathname = '/question-debug';
                 }
               }}
-              className="w-full px-3 py-2 bg-red-600 text-white font-semibold rounded hover:bg-red-700 transition-all duration-300"
+              className="w-full px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-600/30"
             >
-              Admin Dashboard
+              Question Debug
             </button>
-          )}
 
-          <button
-            onClick={() => {
-              const ok = window.confirm("Are you sure you want to sign out?");
-              if (!ok) return;
-              // call logout from context and redirect to login
-              try {
-                logout();
-              } catch (e) {
-                console.error("Logout failed:", e);
-              }
-              try {
-                // Navigate back to root/login
-                window.location.href = "/";
-              } catch (e) {
-                // noop
-              }
-            }}
-            className="w-full px-3 py-2 bg-gray-200 text-slate-900 rounded"
-          >
-            Sign Out
-          </button>
+            <button
+              onClick={() => {
+                try {
+                  window.history.pushState({}, '', '/matchmaking');
+                  window.location.reload();
+                } catch(e) {
+                  window.location.pathname = '/matchmaking';
+                }
+              }}
+              className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-sky-blue to-blue-400 text-black hover:shadow-sky-blue/50'
+                  : 'bg-gradient-to-r from-sky-600 to-blue-500 text-white hover:shadow-sky-600/40'
+              }`}
+            >
+              Start Matchmaking
+            </button>
+            
+            {user?.is_admin && (
+              <button
+                onClick={() => {
+                  try {
+                    window.history.pushState({}, '', '/admin');
+                    window.location.reload();
+                  } catch(e) {
+                    window.location.pathname = '/admin';
+                  }
+                }}
+                className="w-full px-4 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-600/30"
+              >
+                Admin Dashboard
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const ok = window.confirm("Are you sure you want to sign out?");
+                if (!ok) return;
+                try {
+                  logout();
+                } catch (e) {
+                  console.error("Logout failed:", e);
+                }
+                try {
+                  window.location.href = "/";
+                } catch (e) {
+                  // noop
+                }
+              }}
+              className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 ${
+                isDarkMode
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-200 text-slate-900 hover:bg-gray-300'
+              }`}
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
     </div>
