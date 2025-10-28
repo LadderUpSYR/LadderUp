@@ -34,6 +34,36 @@ class MockRedisClient:
             return self.lists[key].pop(0).encode()
         return None
     
+    async def lrem(self, key, count, value):
+        """Mock Redis lrem for removing items from a list"""
+        if key not in self.lists:
+            return 0
+        removed = 0
+        if count == 0:  # Remove all occurrences
+            original_len = len(self.lists[key])
+            self.lists[key] = [item for item in self.lists[key] if item != value]
+            removed = original_len - len(self.lists[key])
+        elif count > 0:  # Remove first N occurrences
+            for _ in range(count):
+                try:
+                    self.lists[key].remove(value)
+                    removed += 1
+                except ValueError:
+                    break
+        else:  # count < 0, remove last N occurrences
+            count = abs(count)
+            for _ in range(count):
+                try:
+                    # Find and remove from the end
+                    for i in range(len(self.lists[key]) - 1, -1, -1):
+                        if self.lists[key][i] == value:
+                            self.lists[key].pop(i)
+                            removed += 1
+                            break
+                except (ValueError, IndexError):
+                    break
+        return removed
+    
     async def publish(self, channel, message):
         self.pubsub_messages.append((channel, message))
         return 1
@@ -210,14 +240,21 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
     
     mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
     
-    # Mock listen_for_match to immediately raise CancelledError (disconnect)
+    # Track if player was enqueued by checking queue inside listen_for_match
+    queue_checked = {"value": False, "length": 0}
+    
     async def mock_listen():
+        # Check queue length before raising CancelledError
+        queue_checked["length"] = await mock_redis.llen("match_queue")
+        queue_checked["value"] = True
+        # Yield control once to avoid syntax errors, then raise
+        if False:
+            yield  # Makes this an async generator
         raise asyncio.CancelledError()
-        yield  # Never reached
     
     with patch("src.server.websocketserver.websocket", mock_ws), \
          patch("src.server.websocketserver.get_session", AsyncMock(return_value=session_data)), \
-         patch("src.server.matchmaking.listen_for_match", mock_listen):
+         patch("src.server.websocketserver.listen_for_match", mock_listen):
         
         from src.server.websocketserver import join_websocket
         try:
@@ -231,9 +268,9 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
     assert queued_msg["status"] == "queued"
     assert queued_msg["user"] == user_id
     
-    # Should be in Redis queue
-    queue_length = await mock_redis.llen("match_queue")
-    assert queue_length == 1
+    # Should have been in Redis queue (checked during execution, before dequeue)
+    assert queue_checked["value"] is True
+    assert queue_checked["length"] == 1
 
 @pytest.mark.asyncio
 async def test_ws_match_found_notification(load_ws_app):
