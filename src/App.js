@@ -8,6 +8,7 @@ import LandingPage from "./components/LandingPage";
 import MatchmakingLandingPage from "./components/MatchmakingLandingPage";
 import AdminPage from "./components/AdminPage";
 import MatchGameRoom from "./components/MatchGameRoom";
+import FaceTrackingPage from "./components/FaceTrackingPage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 import MatchmakingPage from "./components/MatchmakingPage";
@@ -119,6 +120,17 @@ function App() {
             <Profile user={user} />
           ) : window.location.pathname === "/question-debug" ? (
             <QuestionDebug />
+          ) : window.location.pathname === "/face-tracking" ? (
+            <FaceTrackingPage 
+              onBack={() => {
+                try {
+                  window.history.pushState({}, '', '/profile');
+                  window.location.reload();
+                } catch(e) {
+                  window.location.pathname = '/profile';
+                }
+              }}
+            />
           ) : window.location.pathname === "/matchmaking" ? (
             <MatchmakingLandingPage 
               onBack={() => {

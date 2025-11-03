@@ -559,6 +559,24 @@ function Profile({ user }) {
             <button
               onClick={() => {
                 try {
+                  window.history.pushState({}, '', '/face-tracking');
+                  window.location.reload();
+                } catch(e) {
+                  window.location.pathname = '/face-tracking';
+                }
+              }}
+              className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-400 text-black hover:shadow-green-500/50'
+                  : 'bg-gradient-to-r from-green-600 to-emerald-500 text-white hover:shadow-green-600/40'
+              }`}
+            >
+              🎭 Face Tracking Demo
+            </button>
+
+            <button
+              onClick={() => {
+                try {
                   window.history.pushState({}, '', '/matchmaking');
                   window.location.reload();
                 } catch(e) {
