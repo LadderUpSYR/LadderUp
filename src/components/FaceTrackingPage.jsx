@@ -3,7 +3,7 @@ import { FaceLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-
 import { useDarkMode } from '../utils/useDarkMode';
 
 const FaceTrackingPage = ({ onBack }) => {
-  const { isDarkMode } = useDarkMode();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [faceLandmarker, setFaceLandmarker] = useState(null);
@@ -447,16 +447,39 @@ const FaceTrackingPage = ({ onBack }) => {
           }`}>
             Face Tracking Demo
           </h1>
-          <button
-            onClick={onBack}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
-              isDarkMode
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Back to Profile
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={toggleDarkMode}
+              className={`relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                isDarkMode 
+                  ? 'bg-sky-blue focus:ring-sky-blue' 
+                  : 'bg-gray-300 focus:ring-sky-600'
+              }`}
+              aria-label="Toggle theme"
+            >
+              <span
+                className={`inline-block w-6 h-6 transform transition-transform duration-300 ease-in-out rounded-full shadow-lg ${
+                  isDarkMode 
+                    ? 'translate-x-9 bg-gray-900' 
+                    : 'translate-x-1 bg-white'
+                }`}
+              >
+                <span className="flex items-center justify-center h-full text-xs">
+                  {isDarkMode ? '🌙' : '☀️'}
+                </span>
+              </span>
+            </button>
+            <button
+              onClick={onBack}
+              className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                isDarkMode
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Back to Profile
+            </button>
+          </div>
         </div>
 
         {/* Error Message */}
