@@ -61,7 +61,7 @@ def test_profilepage_shows_user_with_answered_question(load_app_with_env):
         mock_redis.hgetall.return_value = mock_session_data
         
         # Call login endpoint to set session cookie
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
+    response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
         assert response.status_code == 200
         data = response.json()

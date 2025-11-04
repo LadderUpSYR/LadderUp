@@ -30,7 +30,7 @@ def test_login_existing_user(load_app_with_env):
         mock_redis.hset = AsyncMock(return_value=True)
 
         # Call endpoint
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
+    response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
         # Assertions
         assert response.status_code == 200

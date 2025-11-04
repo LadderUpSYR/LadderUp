@@ -113,7 +113,7 @@ def test_missing_token_400(load_app_with_env):
 def test_invalid_token_401(load_app_with_env):
     appmod, client, _ = load_app_with_env
     with patch.object(appmod.id_token, "verify_oauth2_token", side_effect=Exception("bad")):
-        r = client.post("/api/auth/login", json={"token": "BAD"})
+        r = client.post("/api/auth/login", json={"token": "BAD", "recaptchaToken": "test-token"})
     assert r.status_code == 401
     assert r.json()["detail"] == "Invalid token"
 
@@ -152,7 +152,7 @@ def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token
         mock_redis.hset = AsyncMock(return_value=True)
 
         # Make request
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
+    response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
     # Response checks
     assert response.status_code == 200
