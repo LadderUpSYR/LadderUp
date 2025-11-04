@@ -26,11 +26,15 @@ def test_login_existing_user(load_app_with_env):
         fake_doc.to_dict.return_value = fake_profile
         mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
 
-        # Patch Redis
+        # Patch Redis with all required async operations
         mock_redis.hset = AsyncMock(return_value=True)
+        mock_redis.expire = AsyncMock(return_value=True)
+        mock_redis.hgetall = AsyncMock(return_value={})
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock(return_value=True)
 
         # Call endpoint
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN"})
+        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
         # Assertions
         assert response.status_code == 200

@@ -10,13 +10,13 @@ const API_BASE = "http://localhost:8000";
  * @param {string} token - The OAuth token/credential
  * @returns {Promise<{user: object}>} The user data
  */
-export const handleOAuthLogin = async (provider, token) => {
+export const handleOAuthLogin = async (provider, token, recaptchaToken) => {
   if (provider === "google" && token) {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, recaptchaToken }),
     });
     
     if (!res.ok) {
@@ -40,18 +40,18 @@ export const handleOAuthLogin = async (provider, token) => {
  * @param {boolean} credentials.remember - Remember me flag (optional)
  * @returns {Promise<{user: object}>} The user data
  */
-export const handleEmailLogin = async ({ email, password, remember }) => {
+export const handleEmailLogin = async ({ email, password, remember, recaptchaToken }) => {
   console.log("login:", { email, password, remember });
   
   const res = await fetch(`${API_BASE}/api/auth/login-email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, recaptchaToken }),
   });
   
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    const err = await res.json();
     throw new Error(err.detail || "Login failed");
   }
   
@@ -68,14 +68,14 @@ export const handleEmailLogin = async ({ email, password, remember }) => {
  * @param {string} credentials.name - User display name
  * @returns {Promise<{user: object}>} The user data
  */
-export const handleSignup = async ({ email, password, name }) => {
+export const handleSignup = async ({ email, password, name, recaptchaToken }) => {
   console.log("signup:", { email, password, name });
   
   const res = await fetch(`${API_BASE}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ email, password, name }),
+    body: JSON.stringify({ email, password, name, recaptchaToken }),
   });
   
   if (!res.ok) {

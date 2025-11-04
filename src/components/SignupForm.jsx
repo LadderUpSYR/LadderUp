@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
+import ReCAPTCHA from "react-google-recaptcha";
 
 /**
  * SignupForm Component
@@ -24,6 +25,7 @@ export default function SignupForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const recaptchaRef = useRef();
 
   const emailValid = (v) => /.+@.+\..+/.test(v);
   const pwValid = (v) => v.length >= 6;
@@ -48,9 +50,13 @@ export default function SignupForm({
       return setError("Passwords do not match.");
     }
 
+    const recaptchaToken = recaptchaRef.current.getValue();
+    if (!recaptchaToken) return setError("Please complete the reCAPTCHA challenge.");
+    recaptchaRef.current.reset();
+
     try {
       setLoading(true);
-      await onSignup?.({ email, password, name });
+      await onSignup?.({ email, password, name, recaptchaToken });
       setSuccess("Account created successfully! Redirecting...");
       // Clear form
       setName("");
@@ -186,6 +192,13 @@ export default function SignupForm({
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/40"
                 placeholder="••••••••"
                 required
+              />
+            </div>
+
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={process.env.REACT_APP_RECAPTCHA_SITE_KEY}
               />
             </div>
 
