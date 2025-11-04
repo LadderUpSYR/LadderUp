@@ -18,8 +18,15 @@ from faster_whisper import WhisperModel
 # Initialize Redis client
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
-# Initialize Whisper model for speech-to-text
-whisper_model = WhisperModel("base", device="cpu")
+# Lazy initialization for Whisper model
+_whisper_model = None
+
+def get_whisper_model():
+    """Lazy initialization of Whisper model for speech-to-text"""
+    global _whisper_model
+    if _whisper_model is None:
+        _whisper_model = WhisperModel("base", device="cpu")
+    return _whisper_model
 
 # Constants
 ROOM_PREFIX = "room:"
@@ -385,7 +392,8 @@ async def process_audio_chunk(match_id: str, player_uid: str, audio_chunk: bytes
             audio_float = audio_np.astype(np.float32) / 32768.0
             
             # Transcribe with Whisper
-            segments, info = whisper_model.transcribe(audio_float, language="en")
+            whisper = get_whisper_model()
+            segments, info = whisper.transcribe(audio_float, language="en")
             
             # Collect all transcribed text
             transcription_text = ""

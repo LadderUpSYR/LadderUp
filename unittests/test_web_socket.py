@@ -161,7 +161,7 @@ def load_ws_app():
          patch("asyncio.create_task", return_value=MagicMock()):
         
         # Import after patching
-        from src.server_comps.websocketserver import app, SESSION_COOKIE_NAME
+        from server_comps.websocketserver import app, SESSION_COOKIE_NAME
 
     
     return app, SESSION_COOKIE_NAME, mock_redis_client
@@ -343,8 +343,8 @@ async def test_enqueue_player():
     """Test player is added to queue"""
     mock_redis = MockRedisClient()
     
-    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
-        from src.server_comps.matchmaking import enqueue_player
+    with patch("server_comps.matchmaking.redis_client", mock_redis):
+        from server_comps.matchmaking import enqueue_player
         await enqueue_player("user123")
     
     assert await mock_redis.llen("match_queue") == 1
@@ -355,8 +355,8 @@ async def test_try_match_players_insufficient_queue():
     mock_redis = MockRedisClient()
     await mock_redis.rpush("match_queue", "user1")
     
-    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
-        from src.server_comps.matchmaking import enqueue_player, try_match_players
+    with patch("server_comps.matchmaking.redis_client", mock_redis):
+        from server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
     
     # Queue should still have 1 player
@@ -375,10 +375,10 @@ async def test_try_match_players_creates_match():
     mock_room = MagicMock()
     mock_room.match_id = "mock_match_id"
 
-    with patch("src.server_comps.matchmaking.redis_client", mock_redis), \
-         patch("src.server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
+    with patch("server_comps.matchmaking.redis_client", mock_redis), \
+         patch("server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
         
-        from src.server_comps.matchmaking import enqueue_player, try_match_players
+        from server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
 
     # Queue should be empty
@@ -408,10 +408,10 @@ async def test_try_match_players_with_three_in_queue():
     mock_room = MagicMock()
     mock_room.match_id = "mock_match_id"
 
-    with patch("src.server_comps.matchmaking.redis_client", mock_redis), \
-         patch("src.server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
+    with patch("server_comps.matchmaking.redis_client", mock_redis), \
+         patch("server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
         
-        from src.server_comps.matchmaking import enqueue_player, try_match_players
+        from server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
 
     # Queue should have 1 player left
@@ -432,8 +432,8 @@ async def test_listen_for_match():
     }
     mock_redis.pubsub_messages.append(("match_channel", json.dumps(match_data)))
     
-    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
-        from src.server_comps.matchmaking import enqueue_player, try_match_players, listen_for_match
+    with patch("server_comps.matchmaking.redis_client", mock_redis):
+        from server_comps.matchmaking import enqueue_player, try_match_players, listen_for_match
         
         matches_received = []
         async for match in listen_for_match():
@@ -457,10 +457,10 @@ async def test_matchmaking_background_task_runs():
         if call_count >= 3:
             raise asyncio.CancelledError()
     
-    with patch("src.server_comps.websocketserver.try_match_players", mock_try_match), \
+    with patch("server_comps.websocketserver.try_match_players", mock_try_match), \
          patch("asyncio.sleep", AsyncMock()):
         
-        from src.server_comps.websocketserver import matchmaking_background_task
+        from server_comps.websocketserver import matchmaking_background_task
         
         try:
             await matchmaking_background_task()
