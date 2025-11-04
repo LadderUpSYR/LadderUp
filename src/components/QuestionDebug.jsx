@@ -6,6 +6,7 @@ const API_BASE = "http://localhost:8000";
 function QuestionDebug() {
     const [questionId, setQuestionId] = useState("");
     const [question, setQuestion] = useState("");
+    const [answerCriteria, setAnswerCriteria] = useState("");
     const [error, setError] = useState("");
     const [answer, setAnswer] = useState("");
     const [currentQuestionId, setCurrentQuestionId] = useState("");
@@ -43,6 +44,7 @@ function QuestionDebug() {
 
             const data = await result.json();
             setCurrentQuestionId(questionId.toString());
+            setAnswerCriteria(data.answerCriteria || "");
             return data;
         } catch (err) {
             throw err;
@@ -60,6 +62,7 @@ function QuestionDebug() {
 
             const data = await result.json();
             setQuestion(data.question);
+            setAnswerCriteria(data.answerCriteria || "");
             setCurrentQuestionId(data.questionId || "random-" + Date.now());
             setAnswer("");
             setSubmitResult(null);
@@ -84,9 +87,6 @@ function QuestionDebug() {
         setError("");
 
         try {
-            // Generate a random score between 1 and 10
-            const randomScore = Math.floor(Math.random() * 10) + 1;
-
             const result = await fetch(`${API_BASE}/api/question/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -95,7 +95,7 @@ function QuestionDebug() {
                     questionId: currentQuestionId,
                     question: question,
                     answer: answer,
-                    score: randomScore
+                    answerCriteria: answerCriteria,
                 }),
             });
 
@@ -107,7 +107,10 @@ function QuestionDebug() {
             const data = await result.json();
             setSubmitResult({
                 success: true,
-                score: randomScore,
+                score: data.grading?.score || data.answer_record?.score || 0,
+                feedback: data.grading?.feedback || "Answer graded successfully",
+                strengths: data.grading?.strengths || [],
+                improvements: data.grading?.improvements || [],
                 message: data.msg,
                 totalAnswered: data.total_answered
             });
@@ -203,11 +206,55 @@ function QuestionDebug() {
                     </button>
 
                     {submitResult && submitResult.success && (
-                        <div className="mt-4 p-4 bg-green-100 border border-green-400 rounded">
-                            <h4 className="font-semibold text-green-800">Answer Submitted!</h4>
-                            <p className="text-green-700">Score: {submitResult.score}/10</p>
-                            <p className="text-green-600 text-sm">Total questions answered: {submitResult.totalAnswered}</p>
-                            <p className="text-xs text-gray-600 mt-2">Check your profile to see all answered questions</p>
+                        <div className="mt-4 p-6 bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-400 rounded-lg shadow-lg">
+                            <h4 className="font-bold text-2xl text-green-800 mb-3">✓ Answer Graded!</h4>
+                            
+                            <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-lg font-semibold text-gray-700">Your Score:</span>
+                                    <span className="text-3xl font-bold text-green-600">
+                                        {submitResult.score.toFixed(1)}/10
+                                    </span>
+                                </div>
+                            </div>
+
+                            {submitResult.feedback && (
+                                <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
+                                    <h5 className="font-semibold text-gray-700 mb-2">📝 Feedback:</h5>
+                                    <p className="text-gray-600 text-sm leading-relaxed">{submitResult.feedback}</p>
+                                </div>
+                            )}
+
+                            {submitResult.strengths && submitResult.strengths.length > 0 && (
+                                <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
+                                    <h5 className="font-semibold text-green-700 mb-2">💪 Strengths:</h5>
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {submitResult.strengths.map((strength, idx) => (
+                                            <li key={idx} className="text-green-600 text-sm">{strength}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {submitResult.improvements && submitResult.improvements.length > 0 && (
+                                <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
+                                    <h5 className="font-semibold text-blue-700 mb-2">🎯 Areas for Improvement:</h5>
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {submitResult.improvements.map((improvement, idx) => (
+                                            <li key={idx} className="text-blue-600 text-sm">{improvement}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            <div className="mt-4 pt-3 border-t border-gray-300">
+                                <p className="text-gray-600 text-sm">
+                                    Total questions answered: <span className="font-semibold">{submitResult.totalAnswered}</span>
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Graded by AI • Check your profile to see all answered questions
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>

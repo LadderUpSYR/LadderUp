@@ -38,12 +38,23 @@ class TestSubmitAnswer:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
+    @patch("src.server_comps.llm_grading.get_grader")
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     @patch("src.server_comps.server.db")
-    def test_submit_answer_new_question(self, mock_db, mock_get_session):
+    def test_submit_answer_new_question(self, mock_db, mock_get_session, mock_get_grader):
         """Test submitting an answer to a new question"""
         session_token = "test-session-token"
         mock_get_session.return_value = self._get_session_data()
+        
+        # Mock the grader
+        mock_grader = MagicMock()
+        mock_grader.grade_answer.return_value = {
+            "score": 8.5,
+            "feedback": "Good answer",
+            "strengths": ["Clear explanation"],
+            "improvements": ["Add more details"]
+        }
+        mock_get_grader.return_value = mock_grader
         
         # Mock Firestore to return user with no answered questions
         mock_user_doc = MagicMock()
@@ -67,14 +78,13 @@ class TestSubmitAnswer:
             json={
                 "questionId": "q1",
                 "question": "Tell me about yourself",
-                "answer": "I am a software engineer with 5 years of experience",
-                "score": 8.5
+                "answer": "I am a software engineer with 5 years of experience"
             }
         )
         
         assert response.status_code == 200
         data = response.json()
-        assert data["msg"] == "Answer submitted successfully"
+        assert data["msg"] == "Answer submitted and graded successfully"
         assert data["total_answered"] == 1
         assert data["answer_record"]["questionId"] == "q1"
         assert data["answer_record"]["score"] == 8.5
@@ -85,12 +95,23 @@ class TestSubmitAnswer:
         assert "answered_questions" in update_call
         assert len(update_call["answered_questions"]) == 1
     
+    @patch("src.server_comps.llm_grading.get_grader")
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     @patch("src.server_comps.server.db")
-    def test_submit_answer_update_existing(self, mock_db, mock_get_session):
+    def test_submit_answer_update_existing(self, mock_db, mock_get_session, mock_get_grader):
         """Test updating an answer to a previously answered question"""
         session_token = "test-session-token"
         mock_get_session.return_value = self._get_session_data()
+        
+        # Mock the grader
+        mock_grader = MagicMock()
+        mock_grader.grade_answer.return_value = {
+            "score": 9.0,
+            "feedback": "Excellent improvement",
+            "strengths": ["Much better details"],
+            "improvements": ["Keep it up"]
+        }
+        mock_get_grader.return_value = mock_grader
         
         # Mock Firestore to return user with existing answered question
         existing_answer = {
@@ -122,14 +143,13 @@ class TestSubmitAnswer:
             json={
                 "questionId": "q1",
                 "question": "Tell me about yourself",
-                "answer": "New improved answer",
-                "score": 9.0
+                "answer": "New improved answer"
             }
         )
         
         assert response.status_code == 200
         data = response.json()
-        assert data["msg"] == "Answer submitted successfully"
+        assert data["msg"] == "Answer submitted and graded successfully"
         assert data["total_answered"] == 1  # Still just one question
         assert data["answer_record"]["score"] == 9.0  # Updated score
         
@@ -161,75 +181,39 @@ class TestSubmitAnswer:
     
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_submit_answer_invalid_score(self, mock_get_session):
-        """Test that invalid scores are rejected"""
+        """Test that missing required fields are rejected (question/answer)"""
         session_token = "test-session-token"
         mock_get_session.return_value = self._get_session_data()
         
         client = TestClient(app)
         client.cookies.set(SESSION_COOKIE_NAME, session_token)
         
-        # Test score too high
+        # Test missing answer
         response = client.post(
             "/api/question/submit",
             json={
                 "questionId": "q1",
                 "question": "Test question",
-                "answer": "Test answer",
-                "score": 15.0
-            }
-        )
-        
-        assert response.status_code == 400
-        assert "Score must be between 0 and 10" in response.json()["detail"]
-        
-        # Test negative score
-        response = client.post(
-            "/api/question/submit",
-            json={
-                "questionId": "q1",
-                "question": "Test question",
-                "answer": "Test answer",
-                "score": -1.0
-            }
-        )
-        
-        assert response.status_code == 400
-        assert "Score must be between 0 and 10" in response.json()["detail"]
-    
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_submit_answer_missing_fields(self, mock_db, mock_get_session):
-        """Test that missing required fields are rejected"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        mock_user_doc = MagicMock()
-        mock_user_doc.exists = True
-        mock_user_doc.to_dict.return_value = {
-            "uid": "test-uid-123",
-            "answered_questions": []
-        }
-        
-        mock_user_ref = MagicMock()
-        mock_user_ref.get.return_value = mock_user_doc
-        mock_db.collection.return_value.document.return_value = mock_user_ref
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
-        
-        response = client.post(
-            "/api/question/submit",
-            json={
-                "questionId": "q1",
-                "question": "",  # Empty question
-                "answer": "Test answer",
-                "score": 8.0
+                "answer": ""
             }
         )
         
         assert response.status_code == 400
         assert "Question and answer are required" in response.json()["detail"]
-
+        
+        # Test missing question
+        response = client.post(
+            "/api/question/submit",
+            json={
+                "questionId": "q1",
+                "question": "",
+                "answer": "Test answer"
+            }
+        )
+        
+        assert response.status_code == 400
+        assert "Question and answer are required" in response.json()["detail"]
+    
 
 class TestGetAnsweredQuestions:
     """Test the /api/profile/answered-questions endpoint"""
