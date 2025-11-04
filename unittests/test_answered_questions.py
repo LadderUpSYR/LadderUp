@@ -21,7 +21,7 @@ with patch('firebase_admin.credentials.Certificate', return_value=mock_cred):
                 os.environ['FIREBASE_SERVICE_ACCOUNT_KEY'] = '{"type": "service_account"}'
                 os.environ['GOOGLE_CLIENT_ID'] = 'test-client-id'
                 
-                from src.server.server import app, SESSION_COOKIE_NAME
+                from src.server_comps.server import app, SESSION_COOKIE_NAME
 
 client = TestClient(app)
 
@@ -38,8 +38,8 @@ class TestSubmitAnswer:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_submit_answer_new_question(self, mock_db, mock_get_session):
         """Test submitting an answer to a new question"""
         session_token = "test-session-token"
@@ -85,8 +85,8 @@ class TestSubmitAnswer:
         assert "answered_questions" in update_call
         assert len(update_call["answered_questions"]) == 1
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_submit_answer_update_existing(self, mock_db, mock_get_session):
         """Test updating an answer to a previously answered question"""
         session_token = "test-session-token"
@@ -138,7 +138,7 @@ class TestSubmitAnswer:
         assert len(update_call["answered_questions"]) == 1
         assert update_call["answered_questions"][0]["score"] == 9.0
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_submit_answer_not_authenticated(self, mock_get_session):
         """Test that submitting without authentication fails"""
         mock_get_session.return_value = None
@@ -159,7 +159,7 @@ class TestSubmitAnswer:
         assert response.status_code == 401
         assert "Invalid or expired session" in response.json()["detail"]
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_submit_answer_invalid_score(self, mock_get_session):
         """Test that invalid scores are rejected"""
         session_token = "test-session-token"
@@ -196,8 +196,8 @@ class TestSubmitAnswer:
         assert response.status_code == 400
         assert "Score must be between 0 and 10" in response.json()["detail"]
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_submit_answer_missing_fields(self, mock_db, mock_get_session):
         """Test that missing required fields are rejected"""
         session_token = "test-session-token"
@@ -243,8 +243,8 @@ class TestGetAnsweredQuestions:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_get_answered_questions_success(self, mock_db, mock_get_session):
         """Test successfully retrieving answered questions"""
         session_token = "test-session-token"
@@ -294,8 +294,8 @@ class TestGetAnsweredQuestions:
         # Most recent should be first
         assert data["answered_questions"][0]["questionId"] == "q2"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_get_answered_questions_empty(self, mock_db, mock_get_session):
         """Test retrieving answered questions when none exist"""
         session_token = "test-session-token"
@@ -325,7 +325,7 @@ class TestGetAnsweredQuestions:
         assert data["average_score"] == 0
         assert len(data["answered_questions"]) == 0
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_get_answered_questions_not_authenticated(self, mock_get_session):
         """Test that getting answered questions without authentication fails"""
         mock_get_session.return_value = None
@@ -338,8 +338,8 @@ class TestGetAnsweredQuestions:
         assert response.status_code == 401
         assert "Invalid or expired session" in response.json()["detail"]
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_get_answered_questions_user_not_found(self, mock_db, mock_get_session):
         """Test that a 404 is returned when user doesn't exist"""
         session_token = "test-session-token"

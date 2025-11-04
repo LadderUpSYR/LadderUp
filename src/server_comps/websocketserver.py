@@ -2,10 +2,13 @@ from quart import Blueprint, websocket, Quart
 from quart_cors import cors
 import asyncio
 import json
-from .matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
-from .server import get_session
-from .match_room import match_room_bp
+from server_comps.matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
+from server_comps.match_room import match_room_bp
+from server_comps.server import get_session
 
+
+
+# 8000
 ws_bp = Blueprint("ws", __name__)
 
 SESSION_COOKIE_NAME = "session_token"

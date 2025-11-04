@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
 
-from src.server.server import app
+from src.server_comps.server import app
 
 
 class TestMatchmakingQueueStatus:
@@ -10,7 +10,7 @@ class TestMatchmakingQueueStatus:
 
     def test_queue_status_empty_queue(self):
         """Test queue status when queue is empty"""
-        with patch('src.server.server.redis_client') as mock_redis:
+        with patch('src.server_comps.server.redis_client') as mock_redis:
             mock_redis.llen = AsyncMock(return_value=0)
             
             client = TestClient(app)
@@ -24,7 +24,7 @@ class TestMatchmakingQueueStatus:
 
     def test_queue_status_one_player(self):
         """Test queue status with one player waiting"""
-        with patch('src.server.server.redis_client') as mock_redis:
+        with patch('src.server_comps.server.redis_client') as mock_redis:
             mock_redis.llen = AsyncMock(return_value=1)
             
             client = TestClient(app)
@@ -38,7 +38,7 @@ class TestMatchmakingQueueStatus:
 
     def test_queue_status_multiple_players(self):
         """Test queue status with multiple players in queue"""
-        with patch('src.server.server.redis_client') as mock_redis:
+        with patch('src.server_comps.server.redis_client') as mock_redis:
             mock_redis.llen = AsyncMock(return_value=5)
             
             client = TestClient(app)
@@ -52,7 +52,7 @@ class TestMatchmakingQueueStatus:
 
     def test_queue_status_redis_error(self):
         """Test queue status when Redis is unavailable - returns default values"""
-        with patch('src.server.server.redis_client') as mock_redis:
+        with patch('src.server_comps.server.redis_client') as mock_redis:
             mock_redis.llen = AsyncMock(side_effect=Exception("Redis connection failed"))
             
             client = TestClient(app)
@@ -67,7 +67,7 @@ class TestMatchmakingQueueStatus:
 
     def test_queue_status_response_format(self):
         """Test that response has correct format"""
-        with patch('src.server.server.redis_client') as mock_redis:
+        with patch('src.server_comps.server.redis_client') as mock_redis:
             mock_redis.llen = AsyncMock(return_value=3)
             
             client = TestClient(app)

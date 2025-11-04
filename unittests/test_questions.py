@@ -2,7 +2,7 @@ import os, sys, importlib
 from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
 from fastapi.testclient import TestClient
-from src.server.server import SESSION_COOKIE_NAME, app, QuestionRequest
+from src.server_comps.server import SESSION_COOKIE_NAME, app, QuestionRequest
 import pytest
 
 
@@ -21,7 +21,7 @@ def test_get_question_2():
     }
 
     # patch in db and such
-    with patch("src.server.server.db") as mock_db:
+    with patch("src.server_comps.server.db") as mock_db:
 
         fake_doc = MagicMock()
         fake_doc.exists = True
@@ -56,7 +56,7 @@ def test_question(badId):
     '''
     Testing a bad ID for search. should always just return the default dict
     '''
-    with patch("src.server.server.db") as mock_db:
+    with patch("src.server_comps.server.db") as mock_db:
 
         fake_doc = MagicMock()
         fake_doc.exists = False
