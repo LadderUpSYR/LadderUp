@@ -13,9 +13,9 @@ def test_login_existing_user(load_app_with_env):
     email = "existing@example.com"
     fake_profile = {"name": "Existing User", "email": email, "questions": [True, False, True]}
 
-    with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server.server.db") as mock_db, \
-         patch("src.server.server.redis_client") as mock_redis:
+    with patch("src.server_comps.server.id_token.verify_oauth2_token") as mock_verify, \
+         patch("src.server_comps.server.db") as mock_db, \
+         patch("src.server_comps.server.redis_client") as mock_redis:
 
         # Patch Google verification
         mock_verify.return_value = {"sub": uid, "email": email, "name": "Existing User"}
