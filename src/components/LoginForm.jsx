@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { GoogleLogin } from "@react-oauth/google";
+import ReCAPTCHA from "react-google-recaptcha";
 
 /**
  * Props
@@ -30,6 +31,7 @@ export default function LoginForm({
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const recaptchaRef = useRef();
 
   const emailValid = (v) => /.+@.+\..+/.test(v);
   const pwValid = (v) => v.length >= 6;
@@ -41,10 +43,17 @@ export default function LoginForm({
     if (!emailValid(email)) return setError("Please enter a valid email address.");
     if (!pwValid(password)) return setError("Password must be at least 6 characters.");
 
+    const recaptchaToken = recaptchaRef.current.getValue();
+    if (!recaptchaToken) return setError("Please complete the reCAPTCHA challenge.");
+    recaptchaRef.current.reset();
+
     try {
       setLoading(true);
-      await onLogin?.({ email, password, remember });
+      // Log the data being sent to help debug
+      console.log('Sending login data:', { email, password, remember, recaptchaToken });
+      await onLogin?.({ email, password, remember, recaptchaToken });
     } catch (err) {
+      console.error('Login error:', err);
       setError(err?.message || "Sign-in failed. Please try again.");
     } finally {
       setLoading(false);
@@ -215,6 +224,13 @@ export default function LoginForm({
                 </label>
               </div>
             )}
+
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={process.env.REACT_APP_RECAPTCHA_SITE_KEY}
+              />
+            </div>
 
             {error && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm px-3 py-2">

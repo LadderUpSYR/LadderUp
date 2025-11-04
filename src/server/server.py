@@ -6,6 +6,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import os, json
 from dotenv import load_dotenv
+import requests as http_requests
 from fastapi.responses import JSONResponse
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,10 @@ from typing import Dict, Optional
 
 #uvicorn src.server.server:app --reload
 
+# Load environment variables
+load_dotenv()
+RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")
+
 # Connect to Redis
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 SESSION_PREFIX = "session:"
@@ -27,6 +32,22 @@ SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 
 # Fallback in-memory session store if Redis is unavailable
 memory_sessions: Dict[str, Dict[str, str]] = {}
+
+async def verify_recaptcha(token: str) -> bool:
+    """Verify a reCAPTCHA token with Google's API."""
+    if not RECAPTCHA_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Server misconfigured: RECAPTCHA_SECRET_KEY not set")
+
+    try:
+        response = http_requests.post("https://www.google.com/recaptcha/api/siteverify", {
+            "secret": RECAPTCHA_SECRET_KEY,
+            "response": token
+        })
+        result = response.json()
+        return result.get("success", False)
+    except Exception as e:
+        print(f"reCAPTCHA verification failed: {e}")
+        return False
 
 
 def build_session_payload(uid: str, name: str, email: str) -> Dict[str, str]:
@@ -132,8 +153,16 @@ def health():
 async def login(data: dict):
     print("got a call.")
     token = data.get("token")
+    recaptcha_token = data.get("recaptchaToken")
+    
     if not token:
         raise HTTPException(status_code=400, detail="Missing token")
+    if not recaptcha_token:
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification required")
+        
+    # Verify reCAPTCHA first
+    if not await verify_recaptcha(recaptcha_token):
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Server misconfigured: GOOGLE_CLIENT_ID not set")
@@ -223,6 +252,7 @@ class SignupRequest(BaseModel):
     email: str
     password: str
     name: str
+    recaptchaToken: str
 
 @app.post("/api/auth/signup")
 async def signup(data: SignupRequest):
@@ -233,6 +263,10 @@ async def signup(data: SignupRequest):
     email = data.email.lower().strip()
     password = data.password
     name = data.name.strip()
+    
+    # Verify reCAPTCHA first
+    if not await verify_recaptcha(data.recaptchaToken):
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
     # Validation
     if not email or "@" not in email:
@@ -301,6 +335,7 @@ async def signup(data: SignupRequest):
 class LoginEmailRequest(BaseModel):
     email: str
     password: str
+    recaptchaToken: str
 
 # any endpoint needs to be sent over https; reject otherwise...?
 @app.post("/api/auth/login-email")
@@ -310,6 +345,10 @@ async def login_email(data: LoginEmailRequest):
     """
     email = data.email.lower().strip()
     password = data.password
+    
+    # Verify reCAPTCHA first
+    if not await verify_recaptcha(data.recaptchaToken):
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
     if not email or not password:
         raise HTTPException(status_code=400, detail="Email and password required")
