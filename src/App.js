@@ -38,8 +38,8 @@ function AuthWrapper() {
     navigate("/profile");
   };
 
-  const handleOAuth = async (provider, token) => {
-    const data = await handleOAuthLogin(provider, token);
+  const handleOAuth = async (provider, token, recaptchaToken) => {
+    const data = await handleOAuthLogin(provider, token, recaptchaToken);
     setUser(data.user);
     navigate("/profile");
   };

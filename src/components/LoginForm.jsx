@@ -84,7 +84,15 @@ export default function LoginForm({
                       key="google"
                       onSuccess={(cred) => {
                         const token = cred?.credential; // Google ID token (JWT)
-                        if (token) onOAuth?.("google", token);
+                        if (token) {
+                          const recaptchaToken = recaptchaRef.current?.getValue();
+                          if (!recaptchaToken) {
+                            setError("Please complete the reCAPTCHA challenge.");
+                            return;
+                          }
+                          recaptchaRef.current.reset();
+                          onOAuth?.("google", token, recaptchaToken);
+                        }
                       }}
                       onError={() => {
                         setError("Google sign-in failed.");
