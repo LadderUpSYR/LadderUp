@@ -508,7 +508,7 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
 
     try:
         # Grade the answer using LLM
-        from src.server.llm_grading import get_grader
+        from src.server_comps.llm_grading import get_grader
         grader = get_grader()
         grading_result = grader.grade_answer(
             question=data.question,

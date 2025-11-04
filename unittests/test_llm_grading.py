@@ -10,14 +10,14 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.server.llm_grading import InterviewGrader, get_grader
+from src.server_comps.llm_grading import InterviewGrader, get_grader
 
 
 class TestInterviewGrader(unittest.TestCase):
     """Test cases for the InterviewGrader class"""
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grader_initialization(self, mock_model):
         """Test that grader initializes with correct model"""
         grader = InterviewGrader()
@@ -25,7 +25,7 @@ class TestInterviewGrader(unittest.TestCase):
         self.assertEqual(grader.model_name, "gemini-2.5-flash")
         mock_model.assert_called_once_with("gemini-2.5-flash")
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', None)
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', None)
     def test_grader_initialization_without_api_key(self):
         """Test that grader raises error without API key"""
         with self.assertRaises(ValueError) as context:
@@ -33,8 +33,8 @@ class TestInterviewGrader(unittest.TestCase):
         
         self.assertIn("GEMINI_API_KEY not found", str(context.exception))
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grader_with_custom_model(self, mock_model):
         """Test grader initialization with custom model"""
         grader = InterviewGrader(model_name="gemini-2.5-pro")
@@ -42,8 +42,8 @@ class TestInterviewGrader(unittest.TestCase):
         self.assertEqual(grader.model_name, "gemini-2.5-pro")
         mock_model.assert_called_once_with("gemini-2.5-pro")
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grade_answer_success(self, mock_model_class):
         """Test successful grading of an answer"""
         # Mock the Gemini response
@@ -92,8 +92,8 @@ IMPROVEMENTS:
         # Verify generate_content was called
         mock_model.generate_content.assert_called_once()
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grade_answer_with_decimal_score(self, mock_model_class):
         """Test grading with decimal score"""
         mock_response = Mock()
@@ -113,8 +113,8 @@ IMPROVEMENTS:
         
         self.assertEqual(result['score'], 7.5)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grade_answer_score_clamping(self, mock_model_class):
         """Test that scores are clamped between 1 and 10"""
         # Test score above 10
@@ -136,8 +136,8 @@ IMPROVEMENTS:
         # Score should be clamped to 10
         self.assertEqual(result['score'], 10.0)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grade_answer_api_error_fallback(self, mock_model_class):
         """Test that grading handles API errors gracefully"""
         mock_model = Mock()
@@ -153,8 +153,8 @@ IMPROVEMENTS:
         self.assertTrue(result['error'])
         self.assertIn("Unable to grade", result['feedback'])
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_build_grading_prompt(self, mock_model_class):
         """Test that grading prompt is built correctly"""
         mock_model_class.return_value = Mock()
@@ -187,8 +187,8 @@ IMPROVEMENTS:
         self.assertIn("Test answer", prompt_without_criteria)
         self.assertNotIn("GRADING CRITERIA:", prompt_without_criteria)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_parse_gemini_response(self, mock_model_class):
         """Test parsing of various Gemini response formats"""
         mock_model_class.return_value = Mock()
@@ -213,8 +213,8 @@ IMPROVEMENTS:
         self.assertEqual(len(result['strengths']), 3)
         self.assertEqual(len(result['improvements']), 3)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_parse_gemini_response_with_bullets(self, mock_model_class):
         """Test parsing response with bullet point variations"""
         mock_model_class.return_value = Mock()
@@ -237,8 +237,8 @@ IMPROVEMENTS:
         self.assertEqual(len(result['strengths']), 3)
         self.assertEqual(len(result['improvements']), 3)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_parse_gemini_response_missing_sections(self, mock_model_class):
         """Test parsing handles missing sections gracefully"""
         mock_model_class.return_value = Mock()
@@ -255,9 +255,9 @@ IMPROVEMENTS:
         self.assertGreater(len(result['strengths']), 0)
         self.assertGreater(len(result['improvements']), 0)
     
-    @patch('src.server.llm_grading._grader_instance', None)
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading._grader_instance', None)
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_get_grader_singleton(self, mock_model_class):
         """Test that get_grader returns singleton instance"""
         mock_model_class.return_value = Mock()
@@ -268,8 +268,8 @@ IMPROVEMENTS:
         # Should be the same instance
         self.assertIs(grader1, grader2)
     
-    @patch('src.server.llm_grading.GEMINI_API_KEY', 'test_api_key')
-    @patch('src.server.llm_grading.genai.GenerativeModel')
+    @patch('src.server_comps.llm_grading.GEMINI_API_KEY', 'test_api_key')
+    @patch('src.server_comps.llm_grading.genai.GenerativeModel')
     def test_grade_answer_multiline_feedback(self, mock_model_class):
         """Test parsing of multi-line feedback"""
         mock_response = Mock()

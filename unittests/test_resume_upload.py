@@ -21,7 +21,7 @@ with patch('firebase_admin.credentials.Certificate', return_value=mock_cred):
                 os.environ['FIREBASE_SERVICE_ACCOUNT_KEY'] = '{"type": "service_account"}'
                 os.environ['GOOGLE_CLIENT_ID'] = 'test-client-id'
                 
-                from src.server.server import app, db, bucket
+                from src.server_comps.server import app, db, bucket
 
 client = TestClient(app)
 
@@ -29,7 +29,7 @@ client = TestClient(app)
 @pytest.fixture
 def mock_session():
     """Fixture to mock a valid user session"""
-    with patch('src.server.server.get_session') as mock_get:
+    with patch('src.server_comps.server.get_session') as mock_get:
         mock_get.return_value = {
             "uid": "test_user_123",
             "name": "Test User",
@@ -42,7 +42,7 @@ def mock_session():
 @pytest.fixture
 def mock_storage_bucket():
     """Fixture to mock Firebase Storage bucket"""
-    with patch('src.server.server.bucket') as mock_bucket:
+    with patch('src.server_comps.server.bucket') as mock_bucket:
         mock_blob = MagicMock()
         mock_blob.public_url = "https://storage.googleapis.com/test-bucket/resumes/test_user_123/resume.pdf"
         mock_bucket.blob.return_value = mock_blob
@@ -52,7 +52,7 @@ def mock_storage_bucket():
 @pytest.fixture
 def mock_firestore_db():
     """Fixture to mock Firestore database"""
-    with patch('src.server.server.db') as mock_db:
+    with patch('src.server_comps.server.db') as mock_db:
         mock_doc_ref = MagicMock()
         mock_db.collection.return_value.document.return_value = mock_doc_ref
         yield mock_db

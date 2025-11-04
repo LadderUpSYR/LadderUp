@@ -45,9 +45,9 @@ def test_profilepage_shows_user_with_answered_question(load_app_with_env):
 
     # Patch Google verification, DB, AND Redis
     # 💡 Use AsyncMock for redis_client
-    with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server.server.db") as mock_db, \
-         patch("src.server.server.redis_client", new_callable=AsyncMock) as mock_redis: 
+    with patch("src.server_comps.server.id_token.verify_oauth2_token") as mock_verify, \
+         patch("src.server_comps.server.db") as mock_db, \
+         patch("src.server_comps.server.redis_client", new_callable=AsyncMock) as mock_redis: 
 
         mock_verify.return_value = {"sub": fake_uid, "email": fake_profile["email"], "name": fake_profile["name"]}
 
