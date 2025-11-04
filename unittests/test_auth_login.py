@@ -91,6 +91,11 @@ def load_app_with_env():
 
         # import after patching
         from src.server_comps import server as appmod
+        # Enable debug mode on the FastAPI app so test responses include tracebacks
+        try:
+            appmod.app.debug = True
+        except Exception:
+            pass
 
     # attach fake db
     fakedb = _DB()
