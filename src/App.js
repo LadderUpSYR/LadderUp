@@ -9,6 +9,7 @@ import LandingPage from "./components/LandingPage";
 import MatchmakingLandingPage from "./components/MatchmakingLandingPage";
 import AdminPage from "./components/AdminPage";
 import MatchGameRoom from "./components/MatchGameRoom";
+import FaceTrackingPage from "./components/FaceTrackingPage";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { useAuth } from "./AuthContext";
 import MatchmakingPage from "./components/MatchmakingPage";
@@ -166,6 +167,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MatchGameRoomWrapper />
+          </ProtectedRoute>
+        } 
+      />
+      
+      <Route 
+        path="/face-tracking" 
+        element={
+          <ProtectedRoute>
+            <FaceTrackingPage onBack={() => navigate('/profile')} />
           </ProtectedRoute>
         } 
       />
