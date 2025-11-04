@@ -77,7 +77,8 @@ class MockRedisClient:
 def load_app_with_env():
     env = {
         "GOOGLE_CLIENT_ID": "test-client-id",
-        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}"
+        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}",
+        "TESTING": "1"
     }
 
 
@@ -152,7 +153,8 @@ def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token
         mock_redis.hset = AsyncMock(return_value=True)
 
         # Make request
-    response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
+        # Make request
+        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
     # Response checks
     assert response.status_code == 200
