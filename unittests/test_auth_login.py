@@ -88,6 +88,8 @@ def load_app_with_env():
         "FIREBASE_SERVICE_ACCOUNT_KEY": "{}",
         "TESTING": "1"
     }
+    os.environ.update(env)  # Set environment variables explicitly
+    print(f"TESTING env var: {os.getenv('TESTING')}")
 
 
     with patch.dict(os.environ, env, clear=False), \
@@ -117,7 +119,7 @@ def test_health_ok(load_app_with_env):
 
 def test_missing_token_400(load_app_with_env):
     appmod, client, _ = load_app_with_env
-    r = client.post("/api/auth/login", json={"recaptchaToken": "test-token"})
+    r = client.post("/api/auth/login", json={"token": None, "recaptchaToken": "test-token"})
     assert r.status_code == 400
     assert r.json()["detail"] == "Missing token"
 
