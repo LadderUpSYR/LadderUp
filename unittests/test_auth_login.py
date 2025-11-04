@@ -86,7 +86,8 @@ def load_app_with_env():
          patch("firebase_admin.initialize_app", lambda *a, **k: None), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
          patch("firebase_admin.firestore.client", lambda: object()), \
-            patch("redis.asyncio.Redis", MockRedisClient.Redis):
+         patch("firebase_admin.storage.bucket", lambda: object()), \
+         patch("redis.asyncio.Redis", MockRedisClient.Redis):
 
         # import after patching
         from src.server_comps import server as appmod
