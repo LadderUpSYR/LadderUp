@@ -487,11 +487,11 @@ class SubmitAnswerRequest(BaseModel):
     questionId: str
     question: str
     answer: str
-    score: float
+    answerCriteria: Optional[str] = None
 
 @app.post("/api/question/submit")
 async def submit_answer(request: Request, data: SubmitAnswerRequest):
-    """Submit an answer to a question and record it in the user's profile"""
+    """Submit an answer to a question and record it in the user's profile with LLM grading"""
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -505,11 +505,17 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
     # Validate inputs
     if not data.question or not data.answer:
         raise HTTPException(status_code=400, detail="Question and answer are required")
-    
-    if data.score < 0 or data.score > 10:
-        raise HTTPException(status_code=400, detail="Score must be between 0 and 10")
 
     try:
+        # Grade the answer using LLM
+        from src.server.llm_grading import get_grader
+        grader = get_grader()
+        grading_result = grader.grade_answer(
+            question=data.question,
+            answer=data.answer,
+            criteria=data.answerCriteria
+        )
+        
         # Get user's current profile
         user_ref = db.collection("users").document(uid)
         user_doc = user_ref.get()
@@ -520,13 +526,17 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         user_data = user_doc.to_dict()
         answered_questions = user_data.get("answered_questions", [])
 
-        # Create new answer record
+        # Create new answer record with LLM grading
         answer_record = {
             "questionId": data.questionId,
             "question": data.question,
             "answer": data.answer,
-            "score": data.score,
-            "date": datetime.now(timezone.utc).isoformat()
+            "score": grading_result["score"],
+            "feedback": grading_result["feedback"],
+            "strengths": grading_result["strengths"],
+            "improvements": grading_result["improvements"],
+            "date": datetime.now(timezone.utc).isoformat(),
+            "gradedBy": "gemini-ai"
         }
 
         # Check if question was already answered - update with latest score
@@ -547,15 +557,16 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         user_ref.update({"answered_questions": answered_questions})
 
         return {
-            "msg": "Answer submitted successfully",
+            "msg": "Answer submitted and graded successfully",
             "answer_record": answer_record,
-            "total_answered": len(answered_questions)
+            "total_answered": len(answered_questions),
+            "grading": grading_result
         }
     except HTTPException:
         raise
     except Exception as e:
         print("Error submitting answer:", e)
-        raise HTTPException(status_code=500, detail="Failed to submit answer")
+        raise HTTPException(status_code=500, detail=f"Failed to submit answer: {str(e)}")
 
 class UpdateProfileRequest(BaseModel):
     name: str
