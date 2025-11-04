@@ -57,16 +57,24 @@ async def mock_hset(*args, **kwargs):
     
 class MockRedisClient:
     def __init__(self, *args, **kwargs):
-        pass
+        self.data = {}
+        self.session_data = {}
     
-    # Use AsyncMock directly for all async methods in your server file
-    # Set the side_effect to RedisError to trigger the 'except' block in store_session
-    hset = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
-    expire = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
-    delete = AsyncMock(side_effect=RedisError("Mocked Redis Failure"))
+    # Use AsyncMock for all Redis operations
+    hset = AsyncMock()
+    expire = AsyncMock(return_value=True)
+    delete = AsyncMock(return_value=True)
 
-    async def hgetall(self, *args, **kwargs):
-        return {}
+    async def hgetall(self, key):
+        # Return session data if it exists
+        return self.session_data.get(key, {})
+
+    async def set(self, key, value, ex=None):
+        self.data[key] = value
+        return True
+
+    async def get(self, key):
+        return self.data.get(key)
     
     @classmethod
     def Redis(cls, *args, **kwargs):
@@ -86,21 +94,17 @@ def load_app_with_env():
          patch("firebase_admin.initialize_app", lambda *a, **k: None), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
          patch("firebase_admin.firestore.client", lambda: object()), \
-         patch("firebase_admin.storage.bucket", lambda: object()), \
+         patch("firebase_admin.storage.bucket", return_value=MagicMock()), \
          patch("redis.asyncio.Redis", MockRedisClient.Redis):
 
         # import after patching
         from src.server_comps import server as appmod
-        # Enable debug mode on the FastAPI app so test responses include tracebacks
-        try:
-            appmod.app.debug = True
-        except Exception:
-            pass
 
-    # attach fake db
+    # attach fake db and enable debug mode
     fakedb = _DB()
     appmod.db = fakedb
     appmod.GOOGLE_CLIENT_ID = "test-client-id"
+    appmod.app.debug = True  # Enable debug mode to see full tracebacks
     client = TestClient(appmod.app)
     return appmod, client, fakedb
 
@@ -113,7 +117,7 @@ def test_health_ok(load_app_with_env):
 
 def test_missing_token_400(load_app_with_env):
     appmod, client, _ = load_app_with_env
-    r = client.post("/api/auth/login", json={})
+    r = client.post("/api/auth/login", json={"recaptchaToken": "test-token"})
     assert r.status_code == 400
     assert r.json()["detail"] == "Missing token"
 
@@ -156,13 +160,15 @@ def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token
 
         mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
 
+        # Set up all required Redis mocks
         mock_redis.hset = AsyncMock(return_value=True)
+        mock_redis.expire = AsyncMock(return_value=True)
+        mock_redis.hgetall = AsyncMock(return_value={})
 
-        # Make request
-        # Make request
+        # Make request inside the patch block so mocks are active
         response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
 
-    # Response checks
+        # Response checks
     assert response.status_code == 200
     data = response.json()
     assert data["msg"] == expected_msg
