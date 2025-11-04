@@ -67,7 +67,8 @@ class TestSignupEndpoint:
             json={
                 "email": "test@example.com",
                 "password": "password123",
-                "name": "Test User"
+                "name": "Test User",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -105,7 +106,8 @@ class TestSignupEndpoint:
             json={
                 "email": "existing@example.com",
                 "password": "password123",
-                "name": "Test User"
+                "name": "Test User",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -121,7 +123,8 @@ class TestSignupEndpoint:
             json={
                 "email": "notanemail",
                 "password": "password123",
-                "name": "Test User"
+                "name": "Test User",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -137,7 +140,8 @@ class TestSignupEndpoint:
             json={
                 "email": "test@example.com",
                 "password": "12345",
-                "name": "Test User"
+                "name": "Test User",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -153,7 +157,8 @@ class TestSignupEndpoint:
             json={
                 "email": "test@example.com",
                 "password": "password123",
-                "name": "A"
+                "name": "A",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -175,7 +180,8 @@ class TestSignupEndpoint:
                 json={
                     "email": "test@example.com",
                     "password": "password123",
-                    "name": "Test User"
+                    "name": "Test User",
+                    "recaptchaToken": "test-token"
                 }
             )
         
@@ -226,7 +232,8 @@ class TestEmailLoginEndpoint:
                 "/api/auth/login-email",
                 json={
                     "email": test_email,
-                    "password": test_password
+                    "password": test_password,
+                    "recaptchaToken": "test-token"
                 }
             )
         
@@ -261,7 +268,8 @@ class TestEmailLoginEndpoint:
             "/api/auth/login-email",
             json={
                 "email": test_email,
-                "password": "wrongpassword"
+                "password": "wrongpassword",
+                "recaptchaToken": "test-token"
             }
         )
         
@@ -276,7 +284,8 @@ class TestEmailLoginEndpoint:
             "/api/auth/login-email",
             json={
                 "email": "nonexistent@example.com",
-                "password": "password123"
+                "password": "password123",
+                "recaptchaToken": "test-token"
             }
         )
         
