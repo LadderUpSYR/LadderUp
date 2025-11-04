@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useDarkMode } from "../utils/useDarkMode";
 
@@ -130,6 +131,7 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
 function Profile({ user }) {
   const { logout } = useAuth();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const navigate = useNavigate();
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeUrl, setResumeUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -246,7 +248,7 @@ function Profile({ user }) {
       alert("Account deleted successfully");
       
       // Redirect to login page
-      window.location.href = "/";
+      navigate('/');
     } catch (error) {
       console.error("Delete account error:", error);
       alert(error.message);
@@ -543,28 +545,14 @@ function Profile({ user }) {
 
           <div className="mt-6 space-y-3">
             <button
-              onClick={() => {
-                try {
-                  window.history.pushState({}, '', '/question-debug');
-                  window.location.reload();
-                } catch(e) {
-                  window.location.pathname = '/question-debug';
-                }
-              }}
+              onClick={() => navigate('/question-debug')}
               className="w-full px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-600/30"
             >
               Question Debug
             </button>
 
             <button
-              onClick={() => {
-                try {
-                  window.history.pushState({}, '', '/face-tracking');
-                  window.location.reload();
-                } catch(e) {
-                  window.location.pathname = '/face-tracking';
-                }
-              }}
+              onClick={() => navigate('/face-tracking')}
               className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-green-500 to-emerald-400 text-black hover:shadow-green-500/50'
@@ -575,14 +563,7 @@ function Profile({ user }) {
             </button>
 
             <button
-              onClick={() => {
-                try {
-                  window.history.pushState({}, '', '/matchmaking');
-                  window.location.reload();
-                } catch(e) {
-                  window.location.pathname = '/matchmaking';
-                }
-              }}
+              onClick={() => navigate('/matchmaking')}
               className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-sky-blue to-blue-400 text-black hover:shadow-sky-blue/50'
@@ -594,14 +575,7 @@ function Profile({ user }) {
             
             {user?.is_admin && (
               <button
-                onClick={() => {
-                  try {
-                    window.history.pushState({}, '', '/admin');
-                    window.location.reload();
-                  } catch(e) {
-                    window.location.pathname = '/admin';
-                  }
-                }}
+                onClick={() => navigate('/admin')}
                 className="w-full px-4 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-600/30"
               >
                 Admin Dashboard
@@ -612,16 +586,8 @@ function Profile({ user }) {
               onClick={() => {
                 const ok = window.confirm("Are you sure you want to sign out?");
                 if (!ok) return;
-                try {
-                  logout();
-                } catch (e) {
-                  console.error("Logout failed:", e);
-                }
-                try {
-                  window.location.href = "/";
-                } catch (e) {
-                  // noop
-                }
+                logout();
+                navigate('/');
               }}
               className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 ${
                 isDarkMode
