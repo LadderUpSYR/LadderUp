@@ -1,16 +1,49 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useMatchRoom } from "./useMatchRoom";
+import { useAudioCapture } from "./useAudioCapture";
 
 /**
  * MatchGameRoom Component
  * Displays the match room interface with:
  * - Waiting room (players ready up)
- * - Active match (question display, timer, video placeholders)
+ * - Active match (question display, timer, audio recording, transcription)
  * - Match completion screen
  */
 export default function MatchGameRoom({ matchId, onExit }) {
-  const { roomState, markReady, disconnect } = useMatchRoom(matchId);
+    console.log("=== MatchGameRoom MOUNTED ===");
+  console.log("Match ID:", matchId);
+  const { roomState, markReady, disconnect, wsRef } = useMatchRoom(matchId);
   const [isReadying, setIsReadying] = useState(false);
+  const hasAutoReadied = useRef(false);  // Track if we've auto-readied
+  
+  // Initialize audio capture with WebSocket ref from useMatchRoom
+  const { isRecording, audioError, toggleRecording } = useAudioCapture(wsRef);
+
+    useEffect(() => {
+    console.log("=== Room State Changed ===");
+    console.log("Status:", roomState.status);
+    console.log("Is Ready:", roomState.isReady);
+    console.log("Question:", roomState.question);
+    const autoReady = async () => {
+      // Only auto-ready once, when connected and not already ready
+      if (
+        !hasAutoReadied.current &&
+        roomState.status === "connected" &&
+        !roomState.isReady
+      ) {
+        hasAutoReadied.current = true;
+        console.log("Auto-readying player...");
+        try {
+          await markReady();
+        } catch (error) {
+          console.error("Auto-ready failed:", error);
+          hasAutoReadied.current = false; // Allow retry
+        }
+      }
+    };
+
+    autoReady();
+  }, [roomState.status, roomState.isReady, markReady]);
 
   // Format time as MM:SS
   const formatTime = (seconds) => {
@@ -219,55 +252,99 @@ export default function MatchGameRoom({ matchId, onExit }) {
             </p>
           </div>
 
-          {/* Video Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Your Video */}
-            <div className="bg-gray-800 rounded-xl overflow-hidden shadow-xl">
-              <div className="bg-gray-700 px-4 py-2 flex items-center justify-between">
-                <span className="font-semibold">You</span>
+          {/* Recording Controls */}
+          <div className="mb-6 flex items-center justify-center space-x-4">
+            <button
+              onClick={toggleRecording}
+              className={`px-8 py-4 rounded-full font-semibold text-lg transition transform hover:scale-105 flex items-center space-x-3 ${
+                isRecording
+                  ? "bg-red-600 hover:bg-red-700 animate-pulse"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
+            >
+              <span className="text-2xl">{isRecording ? "⏹" : "🎤"}</span>
+              <span>{isRecording ? "Stop Recording" : "Start Recording"}</span>
+            </button>
+            
+            {isRecording && (
+              <span className="flex items-center space-x-2 text-red-400 animate-pulse">
+                <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                <span className="text-sm font-semibold">Recording...</span>
+              </span>
+            )}
+          </div>
+
+          {/* Audio Error Display */}
+          {audioError && (
+            <div className="mb-6 bg-red-900 bg-opacity-50 border border-red-700 rounded-lg p-4">
+              <p className="text-red-300">
+                <strong>Audio Error:</strong> {audioError}
+              </p>
+            </div>
+          )}
+
+          {/* Transcription Panels */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Your Transcription */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-blue-300">Your Answer</h3>
                 <span className="flex items-center space-x-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span className="text-sm text-gray-300">Speaking</span>
+                  {isRecording && (
+                    <>
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <span className="text-sm text-gray-300">Speaking</span>
+                    </>
+                  )}
                 </span>
               </div>
-              <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <div className="text-6xl mb-4">🎥</div>
-                  <p className="text-sm">Video feed will appear here</p>
-                  <p className="text-xs mt-2">(Video integration coming soon)</p>
-                </div>
+              <div className="bg-gray-900 rounded-lg p-4 min-h-[200px] max-h-[400px] overflow-y-auto">
+                <p className="text-gray-300 leading-relaxed">
+                  {roomState.playerTranscript || (
+                    <span className="text-gray-500 italic">
+                      Your transcription will appear here as you speak...
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
 
-            {/* Opponent Video */}
-            <div className="bg-gray-800 rounded-xl overflow-hidden shadow-xl">
-              <div className="bg-gray-700 px-4 py-2 flex items-center justify-between">
-                <span className="font-semibold">Opponent</span>
+            {/* Opponent's Transcription */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-purple-300">Opponent's Answer</h3>
                 <span className="flex items-center space-x-2">
-                  <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
-                  <span className="text-sm text-gray-300">Listening</span>
+                  {roomState.opponentSpeaking && (
+                    <>
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <span className="text-sm text-gray-300">Speaking</span>
+                    </>
+                  )}
                 </span>
               </div>
-              <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <div className="text-6xl mb-4">👤</div>
-                  <p className="text-sm">Opponent's video</p>
-                  <p className="text-xs mt-2">(Video integration coming soon)</p>
-                </div>
+              <div className="bg-gray-900 rounded-lg p-4 min-h-[200px] max-h-[400px] overflow-y-auto">
+                <p className="text-gray-300 leading-relaxed">
+                  {roomState.opponentTranscript || (
+                    <span className="text-gray-500 italic">
+                      Opponent's transcription will appear here...
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Tips Section */}
-          <div className="mt-6 bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-xl p-4">
+          <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-xl p-4">
             <h4 className="font-semibold text-yellow-300 mb-2 flex items-center">
               <span className="mr-2">💡</span>
               Tips
             </h4>
             <ul className="text-sm text-gray-300 space-y-1">
+              <li>• Click "Start Recording" to begin answering the question</li>
               <li>• Use the STAR method: Situation, Task, Action, Result</li>
               <li>• Keep your answer concise (aim for 1-2 minutes)</li>
-              <li>• Speak clearly and maintain good eye contact with the camera</li>
+              <li>• Speak clearly - your answer will be transcribed in real-time</li>
             </ul>
           </div>
         </div>
@@ -279,18 +356,40 @@ export default function MatchGameRoom({ matchId, onExit }) {
   if (roomState.status === "completed") {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-green-50 to-teal-100">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            Match Complete!
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Great job! You've completed your interview practice session.
-          </p>
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4">
+          <div className="text-center mb-6">
+            <div className="text-6xl mb-4">🎉</div>
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              Match Complete!
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Great job! You've completed your interview practice session.
+            </p>
+          </div>
+
+          {/* Final Transcripts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-800 mb-2">Your Answer</h3>
+              <div className="bg-white rounded p-3 max-h-[200px] overflow-y-auto">
+                <p className="text-sm text-gray-700">
+                  {roomState.playerTranscript || "No transcription recorded"}
+                </p>
+              </div>
+            </div>
+            <div className="bg-purple-50 rounded-lg p-4">
+              <h3 className="font-semibold text-purple-800 mb-2">Opponent's Answer</h3>
+              <div className="bg-white rounded p-3 max-h-[200px] overflow-y-auto">
+                <p className="text-sm text-gray-700">
+                  {roomState.opponentTranscript || "No transcription recorded"}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-600">
-              Feedback and analytics will be available here in a future update.
+            <p className="text-sm text-gray-600 text-center">
+              Detailed feedback and analytics will be available in a future update.
             </p>
           </div>
 

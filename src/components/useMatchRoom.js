@@ -2,9 +2,11 @@ import { useEffect, useState, useRef, useCallback } from "react";
 
 /**
  * Custom hook for managing WebSocket connection to a match room
- * Handles real-time communication including player status, questions, and timer
+ * Handles real-time communication including player status, questions, timer, and transcriptions
  */
 export function useMatchRoom(matchId) {
+  console.log("=== useMatchRoom HOOK CALLED ===");
+  console.log("Match ID:", matchId);
   const [roomState, setRoomState] = useState({
     status: "connecting", // connecting, connected, waiting, active, completed, error
     playerUid: null,
@@ -15,6 +17,9 @@ export function useMatchRoom(matchId) {
     timeRemaining: null,
     matchDuration: null,
     error: null,
+    playerTranscript: "", // Current player's transcription
+    opponentTranscript: "", // Opponent's transcription
+    opponentSpeaking: false, // Is opponent currently speaking
   });
 
   const wsRef = useRef(null);
@@ -40,11 +45,19 @@ export function useMatchRoom(matchId) {
 
         switch (data.type) {
           case "connected":
-            // Initial connection confirmation
+            console.log(">>> Connected message received");
+            console.log("Full data object:", JSON.stringify(data, null, 2));
+            console.log("Status:", data.status);
+            console.log("Player UID:", data.player_uid);
+            console.log("Is Ready:", data.is_ready);
+            console.log("Question:", data.question);
+            console.log("Time Remaining:", data.time_remaining);
+            
             setRoomState((prev) => ({
               ...prev,
               status: data.status || "waiting",
               playerUid: data.player_uid,
+              isReady: data.is_ready || false,
               question: data.question || prev.question,
               timeRemaining: data.time_remaining || prev.timeRemaining,
             }));
@@ -64,19 +77,21 @@ export function useMatchRoom(matchId) {
             break;
 
           case "player_ready":
-            console.log(`Player ready: ${data.player}`, data);
+            console.log(">>> Player ready message");
+            console.log("Player:", data.player);
+            console.log("Both ready:", data.both_ready);
+            console.log("Question:", data.question);
+            console.log("Match duration:", data.match_duration_seconds);
+            
             setRoomState((prev) => {
-              const updates = {
-                ...prev,
-              };
+              const updates = { ...prev };
 
-              // Check if it's the opponent who readied up
               if (data.player !== prev.playerUid) {
                 updates.opponentReady = true;
               }
 
-              // If both players are ready, update question and status
               if (data.both_ready) {
+                console.log("🎮 MATCH STARTING - Both players ready!");
                 updates.status = "active";
                 if (data.question) {
                   updates.question = data.question;
@@ -112,6 +127,38 @@ export function useMatchRoom(matchId) {
             }));
             break;
 
+          case "transcription":
+            // Handle incoming transcription from STT
+            console.log(`Transcription from ${data.player}:`, data.text);
+            setRoomState((prev) => {
+              // Determine if this is player or opponent transcription
+              const isPlayerTranscript = data.player === prev.playerUid;
+              
+              return {
+                ...prev,
+                playerTranscript: isPlayerTranscript 
+                  ? prev.playerTranscript + " " + data.text
+                  : prev.playerTranscript,
+                opponentTranscript: !isPlayerTranscript
+                  ? prev.opponentTranscript + " " + data.text
+                  : prev.opponentTranscript
+              };
+            });
+            break;
+
+          case "player_speaking":
+            // Update opponent speaking status
+            setRoomState((prev) => {
+              if (data.player !== prev.playerUid) {
+                return {
+                  ...prev,
+                  opponentSpeaking: data.speaking
+                };
+              }
+              return prev;
+            });
+            break;
+
           case "error":
             console.error("Room error:", data.error);
             setRoomState((prev) => ({
@@ -129,24 +176,33 @@ export function useMatchRoom(matchId) {
       }
     };
 
-    socket.onclose = () => {
-      console.log("Match room WebSocket disconnected");
-      wsRef.current = null;
+    socket.onclose = (event) => {
+  console.log("========= WebSocket CLOSED =========");
+  console.log("Close Code:", event.code);
+  console.log("Close Reason:", event.reason);
+  console.log("Was Clean:", event.wasClean);
+  console.log("Current Status:", roomState.status);
+  console.log("====================================");
+  
+  wsRef.current = null;
 
-      setRoomState((prev) => {
-        // Don't change status if match is completed
-        if (prev.status === "completed") {
-          return prev;
-        }
-        return { ...prev, status: "disconnected" };
-      });
+  setRoomState((prev) => {
+    if (prev.status === "completed") {
+      return prev;
+    }
+    return { ...prev, status: "disconnected" };
+  });
 
-      // Attempt to reconnect after 3 seconds if not intentionally closed
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log("Attempting to reconnect...");
-        connect();
-      }, 3000);
-    };
+  // Only reconnect for unexpected closures
+  if (event.code !== 1000 && event.code !== 1001) {
+    console.log("Reconnecting because close code was:", event.code);
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.log("Attempting to reconnect...");
+      connect();
+    }, 3000);
+  }
+};
+
 
     socket.onerror = (error) => {
       console.error("Match room WebSocket error:", error);
@@ -228,5 +284,6 @@ export function useMatchRoom(matchId) {
     sendMessage,
     disconnect,
     reconnect: connect,
+    wsRef, // Expose WebSocket ref for audio capture
   };
 }
