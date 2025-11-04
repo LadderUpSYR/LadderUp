@@ -1,6 +1,6 @@
 """
 Match Room System for 1v1 Interview Practice
-Handles room creation, player authentication, timed questions, and video streaming
+Handles room creation, player authentication, timed questions, video streaming, and STT
 """
 
 import json
@@ -12,15 +12,22 @@ from quart import Blueprint, websocket, request, jsonify
 from dataclasses import dataclass, asdict
 from enum import Enum
 import random
+import numpy as np
+from faster_whisper import WhisperModel
 
 # Initialize Redis client
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Initialize Whisper model for speech-to-text
+whisper_model = WhisperModel("base", device="cpu")
 
 # Constants
 ROOM_PREFIX = "room:"
 ROOM_TTL_SECONDS = 3600  # 1 hour room lifetime
 ACTIVE_ROOMS_SET = "active_rooms"
 MATCH_DURATION_SECONDS = 420  # 7 minutes (420 seconds) for the match
+AUDIO_RATE = 16000  # 16kHz sample rate
+CHUNK_DURATION = 3  # Process audio every 3 seconds
 
 match_room_bp = Blueprint("match_room", __name__)
 
@@ -47,13 +54,17 @@ class MatchRoom:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     time_remaining: Optional[int] = None  
-    
 
 
 # In-memory tracking of active WebSocket connections
 # Key: match_id, Value: {player_uid: websocket_connection}
 active_connections: Dict[str, Dict[str, any]] = {}
 
+# Audio buffers for each player (for continuous transcription)
+# Key: f"{match_id}:{player_uid}", Value: list of audio chunks
+audio_buffers: Dict[str, list] = {}
+
+# Active timers for match countdown
 active_timers: Dict[str, asyncio.Task] = {}
 
 
@@ -242,6 +253,7 @@ async def update_room_status(match_id: str, status: RoomStatus):
         
         await cancel_match_timer(match_id)
 
+
 async def set_player_ready(match_id: str, player_uid: str) -> Dict:
     """
     Mark a player as ready in the room
@@ -284,9 +296,6 @@ async def set_player_ready(match_id: str, player_uid: str) -> Dict:
         timer_task = asyncio.create_task(start_match_timer(match_id))
         active_timers[match_id] = timer_task
         
-        # LOG: Both players ready event
-        # await log_room_event(match_id, "both_players_ready", {"question_id": question["id"]})
-        
         return {
             "both_ready": True,
             "question": question
@@ -315,20 +324,96 @@ async def broadcast_to_room(match_id: str, message: dict, exclude_player: Option
         message: The message dictionary to send
         exclude_player: Optional player_uid to exclude from broadcast
     """
+    # Check if room has any active connections
     if match_id not in active_connections:
+        print(f"DEBUG: Room {match_id} not in active_connections")
         return
+    
+    if not active_connections[match_id]:
+        print(f"DEBUG: Room {match_id} has no players")
+        return
+    
+    print(f"DEBUG: Broadcasting to room {match_id}")
+    print(f"DEBUG: Players in room: {list(active_connections[match_id].keys())}")
+    print(f"DEBUG: Excluding player: {exclude_player}")
+    print(f"DEBUG: Message type: {message.get('type')}")
     
     message_json = json.dumps(message)
     
-    for player_uid, ws in active_connections[match_id].items():
+    for player_uid, ws in list(active_connections[match_id].items()):
         if exclude_player and player_uid == exclude_player:
+            print(f"DEBUG: Skipping excluded player {player_uid}")
             continue
+        
+        print(f"DEBUG: Attempting to send to player {player_uid}")
         try:
             await ws.send(message_json)
+            print(f"DEBUG: Successfully sent to player {player_uid}")
         except Exception as e:
-            print(f"Error broadcasting to player {player_uid}: {e}")
-            # LOG: Broadcast error
-            # await log_room_event(match_id, "broadcast_error", {"player": player_uid, "error": str(e)})
+            print(f"ERROR: Failed to send to player {player_uid}: {e}")
+            import traceback
+            traceback.print_exc()
+
+async def process_audio_chunk(match_id: str, player_uid: str, audio_chunk: bytes):
+    """
+    Process audio chunk with Whisper STT and broadcast transcription
+    
+    Args:
+        match_id: The room ID
+        player_uid: The player sending audio
+        audio_chunk: Binary audio data (int16 PCM)
+    """
+    buffer_key = f"{match_id}:{player_uid}"
+    
+    # Initialize buffer if needed
+    if buffer_key not in audio_buffers:
+        audio_buffers[buffer_key] = []
+    
+    # Add chunk to buffer
+    audio_buffers[buffer_key].append(audio_chunk)
+    
+    # Calculate buffer duration
+    total_samples = sum(len(chunk) // 2 for chunk in audio_buffers[buffer_key])
+    duration = total_samples / AUDIO_RATE
+    
+    # Process when buffer reaches threshold
+    if duration >= CHUNK_DURATION:
+        try:
+            # Convert to numpy array
+            audio_data = b''.join(audio_buffers[buffer_key])
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            audio_float = audio_np.astype(np.float32) / 32768.0
+            
+            # Transcribe with Whisper
+            segments, info = whisper_model.transcribe(audio_float, language="en")
+            
+            # Collect all transcribed text
+            transcription_text = ""
+            for segment in segments:
+                text = segment.text.strip()
+                if text:
+                    transcription_text += text + " "
+            
+            # Broadcast transcription to room if not empty
+            if transcription_text.strip():
+                await broadcast_to_room(match_id, {
+                    "type": "transcription",
+                    "player": player_uid,
+                    "text": transcription_text.strip(),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+                
+                print(f"[{match_id}] {player_uid}: {transcription_text.strip()}")
+            
+            # Keep last 0.5s for context overlap
+            overlap_samples = int(AUDIO_RATE * 0.5)
+            overlap_bytes = overlap_samples * 2
+            audio_buffers[buffer_key] = [audio_data[-overlap_bytes:]]
+            
+        except Exception as e:
+            print(f"Error processing audio for {player_uid} in {match_id}: {e}")
+            # Clear buffer on error
+            audio_buffers[buffer_key] = []
 
 
 # ==================== HTTP ENDPOINTS ====================
@@ -429,7 +514,7 @@ async def room_websocket(match_id: str):
     """
     WebSocket endpoint for real-time communication in a match room
     Supports:
-    - Video stream chunks
+    - Audio stream chunks (for STT)
     - Player status updates
     - Room events
     - Timer updates
@@ -462,10 +547,13 @@ async def room_websocket(match_id: str):
     # Register connection
     if match_id not in active_connections:
         active_connections[match_id] = {}
-    active_connections[match_id][player_uid] = websocket
+    active_connections[match_id][player_uid] = websocket._get_current_object()
     
-    # LOG: Player connected to room
-    # await log_room_event(match_id, "player_connected", {"player": player_uid})
+    # ========== AUTO-READY LOGIC ==========
+    print(f"Auto-readying player {player_uid} in room {match_id}...")
+    result = await set_player_ready(match_id, player_uid)
+    print(f"Auto-ready result - Both ready: {result['both_ready']}, Question: {result.get('question')}")
+    # ======================================
     
     # Notify room of player join
     await broadcast_to_room(match_id, {
@@ -473,22 +561,52 @@ async def room_websocket(match_id: str):
         "player": player_uid
     }, exclude_player=player_uid)
     
+    # Get current room state
     room_data = await get_match_room(match_id)
+    
+    # Build connection message
     connection_message = {
         "type": "connected",
         "match_id": match_id,
         "player_uid": player_uid,
-        "status": room_data.get('status') if room_data else 'waiting'
+        "status": room_data.get('status') if room_data else 'waiting',
+        "is_ready": True  # Player is auto-readied
     }
     
-    if room_data and room_data.get('question_text'):
+    # ========== CHECK IF BOTH PLAYERS READY ==========
+    both_ready = result["both_ready"] and result.get("question")
+    
+    # If both players are ready, include question and mark as active
+    if both_ready:
+        print(f"Both players ready! Starting match in room {match_id}")
+        connection_message["status"] = "active"
+        connection_message["question"] = result["question"]
+        connection_message["time_remaining"] = MATCH_DURATION_SECONDS
+        connection_message["match_duration_seconds"] = MATCH_DURATION_SECONDS
+    # If only this player is ready, check if question already exists from first player
+    elif room_data and room_data.get('question_text'):
         connection_message["question"] = {
             "id": room_data.get('question_id'),
             "text": room_data.get('question_text')
         }
         connection_message["time_remaining"] = room_data.get('time_remaining')
+    # =================================================
     
+    print(f"Sending connection message: {json.dumps(connection_message, indent=2)}")
     await websocket.send(json.dumps(connection_message))
+    
+    # ========== BROADCAST AFTER CONNECTION MESSAGE ==========
+    # Send match start notification to other player AFTER this player's connection is established
+    if both_ready:
+        print(f"Broadcasting match start to other players in room {match_id}...")
+        await broadcast_to_room(match_id, {
+            "type": "player_ready",
+            "player": player_uid,
+            "both_ready": True,
+            "question": result["question"],
+            "match_duration_seconds": MATCH_DURATION_SECONDS
+        }, exclude_player=player_uid)
+    # ========================================================
     
     try:
         while True:
@@ -496,8 +614,8 @@ async def room_websocket(match_id: str):
             # Handle different message types
             try:
                 if isinstance(message, bytes):
-                    # Binary data (video stream chunks)
-                    await handle_video_stream(match_id, player_uid, message)
+                    # Binary data (audio stream chunks for STT)
+                    await process_audio_chunk(match_id, player_uid, message)
                 else:
                     # JSON messages
                     data = json.loads(message)
@@ -506,8 +624,6 @@ async def room_websocket(match_id: str):
                 await websocket.send(json.dumps({"error": "Invalid message format"}))
             except Exception as e:
                 print(f"Error handling message: {e}")
-                # LOG: Message handling error
-                # await log_room_event(match_id, "message_error", {"player": player_uid, "error": str(e)})
     
     except asyncio.CancelledError:
         print(f"Player {player_uid} disconnected from room {match_id}")
@@ -519,17 +635,17 @@ async def room_websocket(match_id: str):
             # If room is empty, clean up
             if not active_connections[match_id]:
                 del active_connections[match_id]
-                # FEATURE: Auto-close abandoned rooms after timeout
         
-        # LOG: Player disconnected
-        # await log_room_event(match_id, "player_disconnected", {"player": player_uid})
+        # Clean up audio buffer
+        buffer_key = f"{match_id}:{player_uid}"
+        if buffer_key in audio_buffers:
+            del audio_buffers[buffer_key]
         
         # Notify room of player departure
         await broadcast_to_room(match_id, {
             "type": "player_left",
             "player": player_uid
         })
-
 
 async def handle_room_message(match_id: str, player_uid: str, data: dict):
     """
@@ -539,6 +655,8 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
     - ready: Player marks themselves as ready
     - chat: Send a chat message to the room
     - signal: WebRTC signaling data
+    - start_audio: Player started speaking
+    - stop_audio: Player stopped speaking
     
     Args:
         match_id: The room ID
@@ -577,35 +695,24 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
             "signal": data.get("signal")
         }, exclude_player=player_uid)
     
+    elif message_type == "start_audio":
+        # Player started speaking - notify opponent
+        await broadcast_to_room(match_id, {
+            "type": "player_speaking",
+            "player": player_uid,
+            "speaking": True
+        }, exclude_player=player_uid)
+    
+    elif message_type == "stop_audio":
+        # Player stopped speaking - notify opponent
+        await broadcast_to_room(match_id, {
+            "type": "player_speaking",
+            "player": player_uid,
+            "speaking": False
+        }, exclude_player=player_uid)
+    
     else:
         print(f"Unknown message type: {message_type}")
-
-
-async def handle_video_stream(match_id: str, player_uid: str, video_chunk: bytes):
-    """
-    Handle incoming video stream data
-    
-    This will:
-    1. Store video chunk for processing (speech-to-text)
-    2. Forward to server for analysis
-    
-    Args:
-        match_id: The room ID
-        player_uid: The player sending video
-        video_chunk: Binary video data
-    """
-    # FEATURE: Send video chunk to speech-to-text processing service
-    # await send_to_stt_service(match_id, player_uid, video_chunk)
-    
-    # FEATURE: Store video chunks for replay functionality
-    # await store_video_chunk(match_id, player_uid, video_chunk)
-    
-    # LOG: Video chunk received
-    # await log_video_metrics(match_id, player_uid, len(video_chunk))
-    
-    pass  # Placeholder for video processing logic
-
-
 
 
 # ==================== CLEANUP TASKS ====================
@@ -632,15 +739,12 @@ async def cleanup_expired_rooms():
                 created_at = datetime.fromisoformat(room_data['created_at'])
                 age = datetime.now(timezone.utc) - created_at
                 
-                # FEATURE: Mark rooms abandoned after 10 minutes of inactivity
+                # Mark rooms abandoned after 10 minutes of inactivity
                 if age > timedelta(minutes=10) and room_data['status'] == RoomStatus.WAITING.value:
                     await update_room_status(match_id, RoomStatus.ABANDONED)
-                    # LOG: Room abandoned
-                    # await log_room_event(match_id, "room_abandoned", {"age_minutes": age.total_seconds() / 60})
             
         except Exception as e:
             print(f"Error in cleanup task: {e}")
         
         # Run every 5 minutes
         await asyncio.sleep(300)
-

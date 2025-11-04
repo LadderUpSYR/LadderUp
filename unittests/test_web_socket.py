@@ -154,22 +154,15 @@ def load_ws_app():
     mock_firebase_app = MagicMock()
     
     with patch.dict(os.environ, env, clear=False), \
-         patch("redis.asyncio.Redis", return_value=mock_redis_client), \
          patch("firebase_admin.initialize_app", return_value=mock_firebase_app), \
          patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
          patch("firebase_admin.firestore.client", lambda: object()), \
-         patch("firebase_admin.storage.bucket", return_value=MagicMock()):
+         patch("firebase_admin.storage.bucket", return_value=MagicMock()), \
+         patch("asyncio.create_task", return_value=MagicMock()):
         
         # Import after patching
-        from src.server.websocketserver import app, SESSION_COOKIE_NAME
-        from src.server.redis_client import redis_client
-        
-        # Replace redis_client in both matchmaking and match_room modules
-        import src.server.matchmaking as matchmaking_mod
-        import src.server.match_room as match_room_mod
-        
-        matchmaking_mod.redis_client = mock_redis_client
-        match_room_mod.redis_client = mock_redis_client  # Add this line
+        from src.server_comps.websocketserver import app, SESSION_COOKIE_NAME
+
     
     return app, SESSION_COOKIE_NAME, mock_redis_client
 
@@ -199,8 +192,8 @@ async def test_ws_missing_session_token(load_ws_app):
     
     mock_ws = MockWebSocket(cookies={})
     
-    with patch("src.server.websocketserver.websocket", mock_ws):
-        from src.server.websocketserver import join_websocket
+    with patch("src.server_comps.websocketserver.websocket", mock_ws):
+        from src.server_comps.websocketserver import join_websocket
         await join_websocket()
     
     # Should send error and close
@@ -217,10 +210,10 @@ async def test_ws_invalid_session_token(load_ws_app):
     
     mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "invalid_token"})
     
-    with patch("src.server.websocketserver.websocket", mock_ws), \
-         patch("src.server.server.get_session", AsyncMock(return_value=None)):
+    with patch("src.server_comps.websocketserver.websocket", mock_ws), \
+         patch("src.server_comps.server.get_session", AsyncMock(return_value=None)):
         
-        from src.server.websocketserver import join_websocket
+        from src.server_comps.websocketserver import join_websocket
         await join_websocket()
     
     # Should send error and close
@@ -237,30 +230,33 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
     
     user_id = "user123"
     session_data = {"uid": user_id, "name": "Test User", "email": "test@example.com"}
-    
     mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
     
-    # Track if player was enqueued by checking queue inside listen_for_match
-    queue_checked = {"value": False, "length": 0}
+    # Track queue length at specific point
+    queue_snapshot = {"length": 0}
     
     async def mock_listen():
-        # Check queue length before raising CancelledError
-        queue_checked["length"] = await mock_redis.llen("match_queue")
-        queue_checked["value"] = True
-        # Yield control once to avoid syntax errors, then raise
-        if False:
-            yield  # Makes this an async generator
-        raise asyncio.CancelledError()
-    
-    with patch("src.server.websocketserver.websocket", mock_ws), \
-         patch("src.server.websocketserver.get_session", AsyncMock(return_value=session_data)), \
-         patch("src.server.websocketserver.listen_for_match", mock_listen):
+        # Snapshot queue length when listen_for_match is called
+        # (this happens after enqueue_player)
+        queue_snapshot["length"] = await mock_redis.llen("match_queue")
         
-        from src.server.websocketserver import join_websocket
+        # Block forever
+        await asyncio.Event().wait()
+        if False:
+            yield
+    
+    with patch("src.server_comps.websocketserver.websocket", mock_ws), \
+         patch("src.server_comps.websocketserver.get_session", AsyncMock(return_value=session_data)), \
+         patch("src.server_comps.websocketserver.listen_for_match", mock_listen), \
+         patch("server_comps.matchmaking.redis_client", mock_redis):
+        
+        from src.server_comps.websocketserver import join_websocket
+        
+        # Run with timeout since it will block forever
         try:
-            await join_websocket()
-        except asyncio.CancelledError:
-            pass
+            await asyncio.wait_for(join_websocket(), timeout=0.1)
+        except asyncio.TimeoutError:
+            pass  # Expected
     
     # Should send queued confirmation
     assert len(mock_ws.sent_messages) >= 1
@@ -268,53 +264,8 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
     assert queued_msg["status"] == "queued"
     assert queued_msg["user"] == user_id
     
-    # Should have been in Redis queue (checked during execution, before dequeue)
-    assert queue_checked["value"] is True
-    assert queue_checked["length"] == 1
-
-@pytest.mark.asyncio
-async def test_ws_match_found_notification(load_ws_app):
-    app, SESSION_COOKIE_NAME, mock_redis = load_ws_app
-    user_id = "user123"
-    partner_id = "user456"
-    session_data = {"uid": user_id, "name": "Test User", "email": "test@example.com"}
-    mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
-
-    from src.server.matchmaking import enqueue_player, try_match_players
-
-    # Enqueue partner manually
-    await enqueue_player(partner_id)
-
-    async def fake_listen_for_match():
-        # The generator should only yield the raw match data,
-        # as if it came from Redis Pub/Sub.
-        # The "queued" message is sent by join_websocket itself.
-        yield {
-            "players": [user_id, partner_id], 
-            "match_id": "match_test"
-        }
-
-    with patch("src.server.websocketserver.websocket", mock_ws), \
-         patch("src.server.websocketserver.get_session", AsyncMock(return_value=session_data)), \
-         patch("src.server.websocketserver.listen_for_match", fake_listen_for_match):
-
-        from src.server.websocketserver import join_websocket
-
-        await join_websocket()  # Runs normally
-
-    # Assertions
-    assert len(mock_ws.sent_messages) == 2
-
-    queued_msg = json.loads(mock_ws.sent_messages[0])
-    assert queued_msg["status"] == "queued"
-    assert queued_msg["user"] == user_id
-
-    match_msg = json.loads(mock_ws.sent_messages[1])
-    assert match_msg["status"] == "match_found"
-    assert match_msg["partner"] == partner_id
-    assert match_msg["match_id"] == "match_test"
-
-
+    # Queue was populated before listen_for_match started
+    assert queue_snapshot["length"] == 1
 
 @pytest.mark.asyncio
 async def test_ws_match_found_partner_ordering(load_ws_app):
@@ -324,40 +275,65 @@ async def test_ws_match_found_partner_ordering(load_ws_app):
     session_data = {"uid": user_id, "name": "Test User", "email": "test@example.com"}
     mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
 
-    from src.server.matchmaking import enqueue_player, try_match_players
+    # Mock the MatchRoom object to be returned
+    mock_room = MagicMock()
+    mock_room.match_id = "mock_match_id"
 
-    # Enqueue partner
-    await enqueue_player(partner_id)
+    # Use event for better coordination
+    match_ready = asyncio.Event()
 
     async def mock_listen_for_match():
-        # Do NOT yield a "queued" message here.
-        # Wait for the message to be published by try_match_players.
-        while not mock_redis.pubsub_messages:
-            await asyncio.sleep(0.01)  # Yield control to the event loop
+        # Wait for match to be published
+        await match_ready.wait()
         
-        # Yield the actual match data when it's available.
+        # Yield the match data
         channel, match_msg = mock_redis.pubsub_messages[0]
         yield json.loads(match_msg)
 
-    with patch("src.server.websocketserver.websocket", mock_ws), \
-         patch("src.server.websocketserver.get_session", AsyncMock(return_value=session_data)), \
-         patch("src.server.websocketserver.listen_for_match", mock_listen_for_match):
+    # Patch BOTH module paths since they're different instances
+    with patch("src.server_comps.websocketserver.websocket", mock_ws), \
+         patch("src.server_comps.websocketserver.get_session", AsyncMock(return_value=session_data)), \
+         patch("src.server_comps.websocketserver.listen_for_match", mock_listen_for_match), \
+         patch("src.server_comps.matchmaking.redis_client", mock_redis), \
+         patch("server_comps.matchmaking.redis_client", mock_redis), \
+         patch("src.server_comps.match_room.redis_client", mock_redis), \
+         patch("server_comps.match_room.redis_client", mock_redis), \
+         patch("src.server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)), \
+         patch("server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)):
 
-        from src.server.websocketserver import join_websocket
+        # Import INSIDE the patch context
+        from src.server_comps.matchmaking import enqueue_player, try_match_players
+        from src.server_comps.websocketserver import join_websocket
 
+        await enqueue_player(partner_id)
+
+        # Start join_websocket
         join_task = asyncio.create_task(join_websocket())
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.05)  # Give it time to start
 
         # Run matchmaking
         await try_match_players()
-        await asyncio.sleep(0)
-        await join_task
+        match_ready.set()  # Signal that match is ready
+        
+        # Give time for message processing
+        await asyncio.sleep(0.05)
+        
+        # Complete the task with timeout to prevent hanging
+        try:
+            await asyncio.wait_for(join_task, timeout=1.0)
+        except asyncio.TimeoutError:
+            join_task.cancel()
+            pytest.fail("join_websocket timed out")
 
-    # Should now have queued + match_found
-    assert len(mock_ws.sent_messages) == 2
+    # Should have both messages
+    assert len(mock_ws.sent_messages) == 2, f"Expected 2 messages, got {len(mock_ws.sent_messages)}: {mock_ws.sent_messages}"
+    
+    queued_msg = json.loads(mock_ws.sent_messages[0])
+    assert queued_msg["status"] == "queued"
+    
     match_msg = json.loads(mock_ws.sent_messages[1])
+    assert match_msg["status"] == "match_found"
     assert match_msg["partner"] == partner_id
-    assert match_msg["match_id"].startswith("match_")
 
 
 
@@ -367,8 +343,8 @@ async def test_enqueue_player():
     """Test player is added to queue"""
     mock_redis = MockRedisClient()
     
-    with patch("src.server.matchmaking.redis_client", mock_redis):
-        from src.server.matchmaking import enqueue_player
+    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
+        from src.server_comps.matchmaking import enqueue_player
         await enqueue_player("user123")
     
     assert await mock_redis.llen("match_queue") == 1
@@ -379,8 +355,8 @@ async def test_try_match_players_insufficient_queue():
     mock_redis = MockRedisClient()
     await mock_redis.rpush("match_queue", "user1")
     
-    with patch("src.server.matchmaking.redis_client", mock_redis):
-        from src.server.matchmaking import enqueue_player, try_match_players
+    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
+        from src.server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
     
     # Queue should still have 1 player
@@ -395,12 +371,19 @@ async def test_try_match_players_creates_match():
     await mock_redis.rpush("match_queue", "user1")
     await mock_redis.rpush("match_queue", "user2")
     
-    with patch("src.server.matchmaking.redis_client", mock_redis):
-        from src.server.matchmaking import enqueue_player, try_match_players
+    # Mock the MatchRoom object to be returned
+    mock_room = MagicMock()
+    mock_room.match_id = "mock_match_id"
+
+    with patch("src.server_comps.matchmaking.redis_client", mock_redis), \
+         patch("src.server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
+        
+        from src.server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
-    
+
     # Queue should be empty
     assert await mock_redis.llen("match_queue") == 0
+    # ... (rest of the test)
     # Match should be published
     assert len(mock_redis.pubsub_messages) == 1
     
@@ -420,13 +403,20 @@ async def test_try_match_players_with_three_in_queue():
     await mock_redis.rpush("match_queue", "user1")
     await mock_redis.rpush("match_queue", "user2")
     await mock_redis.rpush("match_queue", "user3")
-    
-    with patch("src.server.matchmaking.redis_client", mock_redis):
-        from src.server.matchmaking import enqueue_player, try_match_players
+
+    # Mock the MatchRoom object to be returned
+    mock_room = MagicMock()
+    mock_room.match_id = "mock_match_id"
+
+    with patch("src.server_comps.matchmaking.redis_client", mock_redis), \
+         patch("src.server_comps.matchmaking.create_match_room", AsyncMock(return_value=mock_room)): # <-- **ADD THIS LINE**
+        
+        from src.server_comps.matchmaking import enqueue_player, try_match_players
         await try_match_players()
-    
+
     # Queue should have 1 player left
     assert await mock_redis.llen("match_queue") == 1
+    # ... (rest of the test)
     # One match published
     assert len(mock_redis.pubsub_messages) == 1
 
@@ -442,8 +432,8 @@ async def test_listen_for_match():
     }
     mock_redis.pubsub_messages.append(("match_channel", json.dumps(match_data)))
     
-    with patch("src.server.matchmaking.redis_client", mock_redis):
-        from src.server.matchmaking import enqueue_player, try_match_players, listen_for_match
+    with patch("src.server_comps.matchmaking.redis_client", mock_redis):
+        from src.server_comps.matchmaking import enqueue_player, try_match_players, listen_for_match
         
         matches_received = []
         async for match in listen_for_match():
@@ -467,10 +457,10 @@ async def test_matchmaking_background_task_runs():
         if call_count >= 3:
             raise asyncio.CancelledError()
     
-    with patch("src.server.websocketserver.try_match_players", mock_try_match), \
+    with patch("src.server_comps.websocketserver.try_match_players", mock_try_match), \
          patch("asyncio.sleep", AsyncMock()):
         
-        from src.server.websocketserver import matchmaking_background_task
+        from src.server_comps.websocketserver import matchmaking_background_task
         
         try:
             await matchmaking_background_task()

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 # Add the parent directory to the path so we can import the server
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.server.server import app, hash_password, SESSION_COOKIE_NAME
+from src.server_comps.server import app, hash_password, SESSION_COOKIE_NAME
 
 
 class TestProfileEdit:
@@ -26,9 +26,9 @@ class TestProfileEdit:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server.server.store_session", new_callable=AsyncMock)
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.store_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_edit_profile_success(self, mock_db, mock_get_session, mock_store_session):
         """Test successful profile name update"""
         session_token = "test-session-token"
@@ -80,7 +80,7 @@ class TestProfileEdit:
         assert response.status_code == 401
         assert response.json()["detail"] == "Not authenticated"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_edit_profile_invalid_session(self, mock_get_session):
         """Test that editing profile with invalid session fails"""
         # Mock invalid session
@@ -97,8 +97,8 @@ class TestProfileEdit:
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid or expired session"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_edit_profile_firestore_error(self, mock_db, mock_get_session):
         """Test that Firestore errors are handled properly"""
         session_token = "test-session-token"
@@ -131,8 +131,8 @@ class TestChangePassword:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_change_password_success(self, mock_db, mock_get_session):
         """Test successful password change for email auth user"""
         session_token = "test-session-token"
@@ -176,8 +176,8 @@ class TestChangePassword:
         assert update_args["password_hash"] != "newpassword123"  # Should be hashed
         assert len(update_args["password_hash"]) == 64  # SHA-256 hash length
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_change_password_oauth_user_fails(self, mock_db, mock_get_session):
         """Test that OAuth users cannot change password"""
         session_token = "test-session-token"
@@ -220,7 +220,7 @@ class TestChangePassword:
         assert response.status_code == 401
         assert response.json()["detail"] == "Not authenticated"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_change_password_invalid_session(self, mock_get_session):
         """Test that changing password with invalid session fails"""
         mock_get_session.return_value = None
@@ -236,8 +236,8 @@ class TestChangePassword:
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid or expired session"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_change_password_too_short(self, mock_db, mock_get_session):
         """Test that short passwords are rejected"""
         session_token = "test-session-token"
@@ -254,8 +254,8 @@ class TestChangePassword:
         assert response.status_code == 400
         assert "at least 6 characters" in response.json()["detail"]
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_change_password_user_not_found(self, mock_db, mock_get_session):
         """Test that changing password fails if user not found in DB"""
         session_token = "test-session-token"
@@ -280,8 +280,8 @@ class TestChangePassword:
         assert response.status_code == 404
         assert "User not found" in response.json()["detail"]
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_change_password_firestore_error(self, mock_db, mock_get_session):
         """Test that Firestore errors are handled properly"""
         session_token = "test-session-token"
@@ -316,9 +316,9 @@ class TestDeleteAccount:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server.server.delete_session", new_callable=AsyncMock)
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.delete_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_delete_account_success(self, mock_db, mock_get_session, mock_delete_session):
         """Test successful account deletion"""
         session_token = "test-session-token"
@@ -353,7 +353,7 @@ class TestDeleteAccount:
         assert response.status_code == 401
         assert response.json()["detail"] == "Not authenticated"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_delete_account_invalid_session(self, mock_get_session):
         """Test that deleting account with invalid session fails"""
         mock_get_session.return_value = None
@@ -366,8 +366,8 @@ class TestDeleteAccount:
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid or expired session"
     
-    @patch("src.server.server.get_session", new_callable=AsyncMock)
-    @patch("src.server.server.db")
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.db")
     def test_delete_account_firestore_error(self, mock_db, mock_get_session):
         """Test that Firestore errors are handled properly"""
         session_token = "test-session-token"

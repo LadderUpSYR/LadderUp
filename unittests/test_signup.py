@@ -164,7 +164,7 @@ class TestSignupEndpoint:
         """Test that signup actually creates user in Firestore"""
         appmod, client, fakedb = load_app_with_env
         
-        with patch("src.server.server.redis_client") as mock_redis_client:
+        with patch("src.server_comps.server.redis_client") as mock_redis_client:
             # Set up mocks for success (or just a clean fall-through)
             mock_redis_client.hset = AsyncMock(return_value=True) # Mock hset to succeed
             mock_redis_client.expire = AsyncMock(return_value=True) # Mock expire to succeed
@@ -216,7 +216,7 @@ class TestEmailLoginEndpoint:
         }
         
         # Login
-        with patch("src.server.server.redis_client") as mock_redis_client:
+        with patch("src.server_comps.server.redis_client") as mock_redis_client:
             # Set up mocks for success (or at least no internal cleanup error)
             mock_redis_client.hset = AsyncMock(return_value=True)
             mock_redis_client.expire = AsyncMock(return_value=True)

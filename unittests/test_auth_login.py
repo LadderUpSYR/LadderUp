@@ -88,7 +88,7 @@ def load_app_with_env():
             patch("redis.asyncio.Redis", MockRedisClient.Redis):
 
         # import after patching
-        from src.server import server as appmod
+        from src.server_comps import server as appmod
 
     # attach fake db
     fakedb = _DB()
@@ -129,9 +129,9 @@ def test_invalid_token_401(load_app_with_env):
 def test_login_user_sets_cookie(load_app_with_env, fake_uid, fake_profile, token_email, token_name, expected_msg):
     appmod, client, _ = load_app_with_env
 
-    with patch("src.server.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server.server.db") as mock_db, \
-         patch("src.server.server.redis_client") as mock_redis:
+    with patch("src.server_comps.server.id_token.verify_oauth2_token") as mock_verify, \
+         patch("src.server_comps.server.db") as mock_db, \
+         patch("src.server_comps.server.redis_client") as mock_redis:
 
         mock_verify.return_value = {
             "sub": fake_uid,
