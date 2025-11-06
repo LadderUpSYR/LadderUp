@@ -4,6 +4,7 @@ import "./App.css";
 import LoginForm from "./components/LoginForm";
 import SignupForm from "./components/SignupForm";
 import QuestionDebug from "./components/QuestionDebug";
+import PracticeMode from "./components/PracticeMode";
 import Profile from "./components/ProfilePage";
 import LandingPage from "./components/LandingPage";
 import MatchmakingLandingPage from "./components/MatchmakingLandingPage";
@@ -149,6 +150,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <QuestionDebug />
+          </ProtectedRoute>
+        } 
+      />
+      
+      <Route 
+        path="/practice" 
+        element={
+          <ProtectedRoute>
+            <PracticeMode />
           </ProtectedRoute>
         } 
       />

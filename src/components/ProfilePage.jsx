@@ -545,10 +545,14 @@ function Profile({ user }) {
 
           <div className="mt-6 space-y-3">
             <button
-              onClick={() => navigate('/question-debug')}
-              className="w-full px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-600/30"
+              onClick={() => navigate('/practice')}
+              className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-400 text-black hover:shadow-purple-500/50'
+                  : 'bg-gradient-to-r from-purple-600 to-pink-500 text-white hover:shadow-purple-600/40'
+              }`}
             >
-              Question Debug
+              📚 Practice Mode
             </button>
 
             <button
