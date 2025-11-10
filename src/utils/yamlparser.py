@@ -36,7 +36,11 @@ GLOBAL_PREPROMPT: str = """
 
 {{if needs_work_history}}
 For this question, please consider the player's resume and work experience history to grade their answer appropriately. \
-For this question, consider the {{consider_nth_previous}} most recent previous work experiences when grading.
+For this question, consider up to the {{consider_nth_previous}} most recent previous work experiences when grading.
+
+Their work history is as follows:
+{{pulled_work_history}}
+
 For this question, if the player's answer does not align with their work history, please deduct points accordingly. \
 The factor for this is {{evident_examples}}. For values closer to 1, deduct more points for misalignment.
 {{end if}}
@@ -58,7 +62,17 @@ The difficulty of this question is set to {{question_difficulty}}. Here is a bre
 - Hard: Advanced understanding of the topic, requires comprehensive and detailed answers. The answer should be thorough, well-reasoned, and demonstrate a deep knowledge of the subject matter.
 When grading, please adjust your expectations based on the difficulty level of the question.
 
+Here is the following brief description of the question's industry and role:
+Industry: {{industry}}
+Role: {{role}}
 
+Finally, grade the answer with the following "bonus" and "penalty" settings:
+- Grammar Harshness: {{grammar_harshness}} (scale from 0 to 1, where 1 is the most harsh)
+- Umms Penalty: {{umms_penalty}} (scale from 0 to 1, where 1 is the most harsh)
+- Repetition Penalty: {{repetition_penalty}} (scale from 0 to 1, where 1 is the most harsh)
+- STAR Adjustment: {{star_adjustment}} (scale from 0 to 1, where 1 is the most harsh)
+
+Your answer should be returned in the json format of... (maybe this is where @jess can do some prompt engineering?)
 
 """
 
