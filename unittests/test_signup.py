@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 # import load app with env
-from .test_auth_login import load_app_with_env  # or define _load_app_with_env() in this file
+from unittests.conftest import load_app_with_env  # or define _load_app_with_env() in this file
 
 
 class TestPasswordHashing:

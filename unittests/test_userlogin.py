@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Import your helper to load app with patched env
-from .test_auth_login import load_app_with_env  # or define _load_app_with_env() in this file
+from unittests.conftest import load_app_with_env  # or define _load_app_with_env() in this file
 
 # ----------------- Tests -----------------
 
