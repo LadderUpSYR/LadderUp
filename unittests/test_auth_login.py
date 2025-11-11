@@ -1,114 +1,13 @@
-import os, sys
-from pathlib import Path
+"""
+Authentication and login tests.
+
+This module tests the FastAPI server's authentication endpoints,
+including login, token validation, and session management.
+"""
+
 from unittest.mock import patch, MagicMock, AsyncMock
-from fastapi.testclient import TestClient
-from redis.exceptions import RedisError 
+
 import pytest
-
-# Ensure src is in sys.path
-SRC = Path(__file__).resolve().parents[1] / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-# ------------------ Fake Firestore classes ------------------
-class _Doc:
-    def __init__(self, exists, data=None): 
-        self._e, self._d = exists, data or {}
-    @property
-    def exists(self): return self._e
-    def to_dict(self): return self._d
-
-class _DocRef:
-    def __init__(self, store, uid): self.store, self.uid = store, uid
-    def get(self): return _Doc(self.uid in self.store, self.store.get(self.uid))
-    def set(self, data): self.store[self.uid] = data
-
-class _Collection:
-    def __init__(self, store): self.store = store
-    def document(self, uid): return _DocRef(self.store, uid)
-    def where(self, field, op, value):
-        """Mock the where() method for querying"""
-        mock_query = MagicMock()
-        mock_query.limit = MagicMock(return_value=mock_query)
-        
-        # Return matching documents
-        matching = []
-        for uid, data in self.store.items():
-            if field in data and data[field] == value:
-                matching.append(_Doc(True, data))
-        
-        mock_query.stream = MagicMock(return_value=iter(matching))
-        return mock_query
-
-class _DB:
-    def __init__(self): self.users = {}
-    def collection(self, name):
-        assert name == "users"
-        return _Collection(self.users)
-
-from redis.exceptions import RedisError
-from unittest.mock import AsyncMock # already imported
-
-# Functions to simulate failure in store_session, forcing fallback
-async def mock_hset(*args, **kwargs):
-    # This simulates a connection error, forcing the store_session 'except' block.
-    # This ensures the session logic correctly uses memory_sessions in the test.
-    raise RedisError("Mocked Redis Failure for testing") 
-    
-class MockRedisClient:
-    def __init__(self, *args, **kwargs):
-        self.data = {}
-        self.session_data = {}
-    
-    # Use AsyncMock for all Redis operations
-    hset = AsyncMock()
-    expire = AsyncMock(return_value=True)
-    delete = AsyncMock(return_value=True)
-
-    async def hgetall(self, key):
-        # Return session data if it exists
-        return self.session_data.get(key, {})
-
-    async def set(self, key, value, ex=None):
-        self.data[key] = value
-        return True
-
-    async def get(self, key):
-        return self.data.get(key)
-    
-    @classmethod
-    def Redis(cls, *args, **kwargs):
-        return cls() 
-
-# ------------------ Fixture ------------------
-@pytest.fixture
-def load_app_with_env():
-    env = {
-        "GOOGLE_CLIENT_ID": "test-client-id",
-        "FIREBASE_SERVICE_ACCOUNT_KEY": "{}",
-        "TESTING": "1"
-    }
-    os.environ.update(env)  # Set environment variables explicitly
-    print(f"TESTING env var: {os.getenv('TESTING')}")
-
-
-    with patch.dict(os.environ, env, clear=False), \
-         patch("firebase_admin.initialize_app", lambda *a, **k: None), \
-         patch("firebase_admin.credentials.Certificate", lambda *a, **k: object()), \
-         patch("firebase_admin.firestore.client", lambda: object()), \
-         patch("firebase_admin.storage.bucket", return_value=MagicMock()), \
-         patch("redis.asyncio.Redis", MockRedisClient.Redis):
-
-        # import after patching
-        from src.server_comps import server as appmod
-
-    # attach fake db and enable debug mode
-    fakedb = _DB()
-    appmod.db = fakedb
-    appmod.GOOGLE_CLIENT_ID = "test-client-id"
-    appmod.app.debug = True  # Enable debug mode to see full tracebacks
-    client = TestClient(appmod.app)
-    return appmod, client, fakedb
 
 # ------------------ Tests ------------------
 def test_health_ok(load_app_with_env):
