@@ -6,6 +6,7 @@ import os
 import google.generativeai as genai
 from typing import Dict, Optional
 from dotenv import load_dotenv
+from src.utils.yamlparser import yaml_parser
 
 load_dotenv()
 
@@ -33,6 +34,9 @@ class InterviewGrader:
         # Initialize the model
         self.model = genai.GenerativeModel(model_name)
     
+
+    # This question needs to be updated to use the Question class, such that the yaml parser can be used
+    # todo implementation of player uuid passing aswell
     def grade_answer(self, question: str, answer: str, criteria: Optional[str] = None) -> Dict:
         """
         Grade an interview answer using Gemini AI.
@@ -50,6 +54,11 @@ class InterviewGrader:
                 - improvements (list): Suggested areas for improvement
         """
         # Build the grading prompt
+        # criteria needs to come from the yaml parser
+
+
+        #criteria = yaml_parser(question, "player_uuid_placeholder") # TODO: replace with actual player UUID
+
         prompt = self._build_grading_prompt(question, answer, criteria)
         
         try:

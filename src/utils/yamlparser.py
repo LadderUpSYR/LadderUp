@@ -72,7 +72,6 @@ Finally, grade the answer with the following "bonus" and "penalty" settings:
 - Repetition Penalty: {{repetition_penalty}} (scale from 0 to 1, where 1 is the most harsh)
 - STAR Adjustment: {{star_adjustment}} (scale from 0 to 1, where 1 is the most harsh)
 
-Your answer should be returned in the json format of... (maybe this is where @jess can do some prompt engineering?)
 
 """
 
@@ -82,7 +81,7 @@ class Question:
     def __init__(self, metadata_yaml: str):
         self.metadata_yaml = metadata_yaml
 
-def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
+def yaml_parser(question: Question, player_uuid: str) -> str:
     """
     Parses the YAML metadata for a given question and returns it as a formatted string.
 
