@@ -26,38 +26,6 @@ with patch('firebase_admin.credentials.Certificate', return_value=mock_cred):
 client = TestClient(app)
 
 
-@pytest.fixture
-def mock_session():
-    """Fixture to mock a valid user session"""
-    with patch('src.server_comps.server.get_session') as mock_get:
-        mock_get.return_value = {
-            "uid": "test_user_123",
-            "name": "Test User",
-            "email": "test@example.com",
-            "expires": "9999999999"
-        }
-        yield mock_get
-
-
-@pytest.fixture
-def mock_storage_bucket():
-    """Fixture to mock Firebase Storage bucket"""
-    with patch('src.server_comps.server.bucket') as mock_bucket:
-        mock_blob = MagicMock()
-        mock_blob.public_url = "https://storage.googleapis.com/test-bucket/resumes/test_user_123/resume.pdf"
-        mock_bucket.blob.return_value = mock_blob
-        yield mock_bucket
-
-
-@pytest.fixture
-def mock_firestore_db():
-    """Fixture to mock Firestore database"""
-    with patch('src.server_comps.server.db') as mock_db:
-        mock_doc_ref = MagicMock()
-        mock_db.collection.return_value.document.return_value = mock_doc_ref
-        yield mock_db
-
-
 class TestResumeUpload:
     """Test cases for resume upload functionality"""
 

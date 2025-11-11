@@ -1,7 +1,7 @@
 import os, sys
 # 💡 Change MagicMock to AsyncMock for the redis client
 from unittest.mock import patch, MagicMock, AsyncMock 
-from unittests.test_auth_login import load_app_with_env
+from unittests.conftest import load_app_with_env
 import pytest
 from datetime import datetime, timedelta, timezone # Need these for the mock data
 
