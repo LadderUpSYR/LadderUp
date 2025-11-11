@@ -76,8 +76,12 @@ Your answer should be returned in the json format of... (maybe this is where @je
 
 """
 
-
 # yaml parser will inject metadata into a fstring that will be passed along to the LLM grader
+# assumses a Question Class with a metadata_yaml field like this:
+class Question:
+    def __init__(self, metadata_yaml: str):
+        self.metadata_yaml = metadata_yaml
+
 def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
     """
     Parses the YAML metadata for a given question and returns it as a formatted string.
@@ -98,6 +102,10 @@ def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
     needs_work_history = user_history.get("needs_work_history", False)
     consider_nth_previous = user_history.get("consider_nth_previous", 0)
 
+    # get the nth previous from the player's resume, this is a placeholder for actual implementation
+    # pulled_work_history = get_player_work_history(player_uuid, consider_nth_previous)
+    pulled_work_history = "Placeholder for player's work history."  # Placeholder text
+
     question_difficulty = metadata.get("question_difficulty", "medium")
 
     grade_settings = metadata.get("grade_settings", {})
@@ -117,4 +125,24 @@ def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
     word_count = len(answer.split())
     calculated_length = word_count / GLOBAL_SPOKEN_WORDS_PER_MINUTE
 
-    return formatted_metadata
+
+    # insert the variables into the preprompt
+    preprompt = GLOBAL_PREPROMPT.format(
+        needs_work_history=needs_work_history,
+        consider_nth_previous=consider_nth_previous,
+        question_difficulty=question_difficulty,
+        grammar_harshness=grammar_harshness,
+        umms_penalty=umms_penalty,
+        repetition_penalty=repetition_penalty,
+        evident_examples=evident_examples,
+        star_adjustment=star_adjustment,
+        industry=industry,
+        role=role,
+        expected_length=expected_length,
+        keywords=keywords,
+        keyword_weights=keyword_weights,
+        calculated_length=calculated_length,
+        pulled_work_history=pulled_work_history
+    )
+
+    return preprompt # this prompt can then be sent to the llm grader
