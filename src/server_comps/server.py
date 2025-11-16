@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -147,6 +147,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Practice Mode STT WebSocket 
+# Import the practice STT handler from separate module
+from .practice_stt_fastapi import practice_stt_websocket_handler
+
+@app.websocket("/ws/practice")
+async def practice_stt_websocket(websocket: WebSocket):
+    """WebSocket endpoint for practice mode speech-to-text"""
+    await practice_stt_websocket_handler(websocket)
 
 @app.get("/health")
 def health():
