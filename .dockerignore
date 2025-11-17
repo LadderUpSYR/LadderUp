@@ -1,0 +1,18 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+
+# Node.js / Frontend
+node_modules/
+.env
+
+*.js
+*.jsx
+
+# Any other local dev files
+*.md
+

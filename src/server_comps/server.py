@@ -26,7 +26,9 @@ load_dotenv()
 RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")
 
 # Connect to Redis
-redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 SESSION_PREFIX = "session:"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -114,26 +116,19 @@ async def delete_session(session_token: str) -> None:
 
 # Load environment variables
 load_dotenv()
+
+
+# ADD THIS IN ITS PLACE
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-SERVICE_ACCOUNT_KEY = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
+SESSION_COOKIE_NAME = "session_token"
 
-SESSION_COOKIE_NAME = "session_token" # needed?
-
-# Initialize Firebase Admin
-if not SERVICE_ACCOUNT_KEY:
-    raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_KEY is not set")
-
-try:
-    if SERVICE_ACCOUNT_KEY.strip().startswith("{"):
-        cred = credentials.Certificate(json.loads(SERVICE_ACCOUNT_KEY))
-    else:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_KEY)
-except Exception as e:
-    raise RuntimeError(f"Invalid FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
+cred = credentials.ApplicationDefault() 
 
 firebase_admin.initialize_app(cred, {
-    'storageBucket': 'ladderup-5e25d.firebasestorage.app'
+    'storageBucket': 'ladderup-5e25d.firebasestorage.app',
+    'projectId': 'ladderup-5e25d',
 })
+
 db = firestore.client()
 bucket = storage.bucket()
 
@@ -142,7 +137,12 @@ app = FastAPI()
 # Allow React dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://localhost:8000","http://localhost:5000","http://localhost:5001"],
+    allow_origins=["http://localhost:3000","http://localhost:8000","http://localhost:5000",
+    "http://localhost:5001",
+    "https://ladderup-5e25d.web.app",  # Add this
+    "https://ladderup-5e25d.firebaseapp.com",
+    
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -230,8 +230,8 @@ async def login(data: dict):
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
-            samesite="lax",
+            secure=True,  # True in production
+            samesite="none",
             max_age=SESSION_TTL_SECONDS
         )
         return response
@@ -323,8 +323,8 @@ async def signup(data: SignupRequest):
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
-            samesite="lax",
+            secure=True,  # True in production
+            samesite="none",
             max_age=SESSION_TTL_SECONDS
         )
         return response
@@ -403,8 +403,8 @@ async def login_email(data: LoginEmailRequest):
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
-            samesite="lax",
+            secure=True,  # True in production
+            samesite="none",
             max_age=SESSION_TTL_SECONDS
         )
         return response
@@ -421,7 +421,7 @@ async def logout(request: Request):
     response = JSONResponse({"msg": "Successfully signed out"})
     
     # Always delete the cookie on the client side, regardless of server status
-    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    response.delete_cookie(key=SESSION_COOKIE_NAME, secure=True, samesite="none")
     
     if not session_token:
         # No session token means nothing to do, return success

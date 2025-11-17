@@ -18,7 +18,7 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
           alert("Password must be at least 6 characters");
           return;
         }
-        endpoint = "http://localhost:8000/api/profile/change-password";
+        endpoint = "/api/profile/change-password";
         body = JSON.stringify({ password: localValue });
         errorMsg = "Failed to update password";
       } else {
@@ -27,7 +27,7 @@ function EditableField({ label, type = "text", value = "", placeholder = "", onS
           alert("Name must be at least 2 characters");
           return;
         }
-        endpoint = "http://localhost:8000/api/profile/edit";
+        endpoint = "/api/profile/edit";
         body = JSON.stringify({ name: localValue });
         errorMsg = "Failed to update username";
       }
@@ -148,7 +148,7 @@ function Profile({ user }) {
 
   const fetchResume = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/profile/resume", {
+      const response = await fetch("/api/profile/resume", {
         credentials: "include",
       });
 
@@ -164,7 +164,7 @@ function Profile({ user }) {
   const fetchAnsweredQuestions = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:8000/api/profile/answered-questions", {
+      const response = await fetch("/api/profile/answered-questions", {
         credentials: "include",
       });
 
@@ -202,7 +202,7 @@ function Profile({ user }) {
       const formData = new FormData();
       formData.append("file", resumeFile);
 
-      const response = await fetch("http://localhost:8000/api/profile/upload-resume", {
+      const response = await fetch("/api/profile/upload-resume", {
         method: "POST",
         credentials: "include",
         body: formData,
@@ -231,7 +231,7 @@ function Profile({ user }) {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/auth/delete-account", {
+      const response = await fetch("/api/auth/delete-account", {
         method: "DELETE",
         credentials: "include",
       });

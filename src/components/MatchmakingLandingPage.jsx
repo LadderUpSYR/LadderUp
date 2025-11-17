@@ -17,7 +17,7 @@ const MatchmakingLandingPage = ({ onBack }) => {
   useEffect(() => {
     const fetchQueueStatus = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/matchmaking/queue-status');
+        const response = await fetch('/api/matchmaking/queue-status');
         if (response.ok) {
           const data = await response.json();
           setQueueStatus(data);
@@ -66,7 +66,7 @@ const MatchmakingLandingPage = ({ onBack }) => {
     setShowAcceptDialog(false);
     // Redirect happens automatically from useMatchmaking hook
     if (matchId) {
-      window.location.href = `http://localhost:8000/match/${matchId}`;
+      window.location.href = `/match/${matchId}`;
     }
   };
 

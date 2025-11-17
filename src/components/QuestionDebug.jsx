@@ -1,7 +1,6 @@
 import { useState } from "react";
 import "../App.css";
 
-const API_BASE = "http://localhost:8000";
 
 function QuestionDebug() {
     const [questionId, setQuestionId] = useState("");
@@ -29,7 +28,7 @@ function QuestionDebug() {
 
     const getQuestionOnId = async ({ questionId }) => {
         try {
-            const result = await fetch(`${API_BASE}/api/question/id`, {
+            const result = await fetch(`/api/question/id`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -53,7 +52,7 @@ function QuestionDebug() {
 
     const getRandomQuestion = async () => {
         try {
-            const result = await fetch(`${API_BASE}/api/question/random`, {
+            const result = await fetch(`/api/question/random`, {
                 method: "GET",
                 credentials: "include",
             });
@@ -87,7 +86,7 @@ function QuestionDebug() {
         setError("");
 
         try {
-            const result = await fetch(`${API_BASE}/api/question/submit`, {
+            const result = await fetch(`/api/question/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
