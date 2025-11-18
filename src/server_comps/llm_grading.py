@@ -6,7 +6,7 @@ import os
 import google.generativeai as genai
 from typing import Dict, Optional
 from dotenv import load_dotenv
-from src.utils.yamlparser import yaml_parser
+from src.utils.yamlparser import yaml_parser, Question
 
 load_dotenv()
 
@@ -124,10 +124,8 @@ class InterviewGrader:
                 }
         
         return result
-    
-    # This question needs to be updated to use the Question class, such that the yaml parser can be used
-    # todo implementation of player uuid passing aswell
-    def grade_answer(self, question: str, answer: str, criteria: Optional[str] = None) -> Dict:
+
+    def grade_answer(self, question: Question, answer: str, player_uuid: Optional[str] = None) -> Dict:
         """
         Grade an interview answer using Gemini AI with prompt injection protection.
         
@@ -149,13 +147,20 @@ class InterviewGrader:
         
         try:
             # Validate all inputs
-            question = self._validate_input(question, "Question")
+            question_text = self._validate_input(question.text, "Question")
             answer = self._validate_input(answer, "Answer")
-            if criteria:
-                criteria = self._validate_input(criteria, "Criteria")
+
+            criteria = question.answer_criteria if question.answer_criteria else None
+
+            if question.metadata_yaml and player_uuid:
+                yaml_criteria = yaml_parser(question, answer, player_uuid)
+
+                if criteria:
+                    criteria = f"{criteria}\n\n{yaml_criteria}"
+                else:
+                    criteria = yaml_criteria
             
-            # Build the grading prompt with security controls
-            prompt = self._build_grading_prompt(question, answer, criteria)
+            prompt = self._build_grading_prompt(question_text, answer, criteria)
             
             # Generate response from Gemini
             response = self.model.generate_content(prompt)

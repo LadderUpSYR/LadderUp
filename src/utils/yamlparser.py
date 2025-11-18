@@ -24,6 +24,7 @@ question_metadata:
 """
 
 import yaml
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 
@@ -77,9 +78,25 @@ Finally, grade the answer with the following "bonus" and "penalty" settings:
 
 # yaml parser will inject metadata into a fstring that will be passed along to the LLM grader
 # assumses a Question Class with a metadata_yaml field like this:
+# class Question:
+#     def __init__(self, metadata_yaml: str):
+#         self.metadata_yaml = metadata_yaml
+
+@dataclass
 class Question:
-    def __init__(self, metadata_yaml: str):
-        self.metadata_yaml = metadata_yaml
+    id: int
+    question: str
+    answer_criteria: str
+    passing_score: float
+    avg_score: float = 1.0
+    num_attempts: int = 0
+    metadata_yaml: str = None
+
+    @property
+    def text(self) -> str:
+        """Alias for question field to match common usage"""
+        return self.question
+
 
 def yaml_parser(question: Question, player_uuid: str) -> str:
     """
