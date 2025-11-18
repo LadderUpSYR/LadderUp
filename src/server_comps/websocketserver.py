@@ -4,7 +4,6 @@ import asyncio
 import json
 from server_comps.matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
 from server_comps.match_room import match_room_bp
-from server_comps.practice_stt import practice_stt_bp
 from server_comps.server import get_session
 
 
@@ -93,4 +92,4 @@ async def stop_tasks():
 
 app.register_blueprint(ws_bp)
 app.register_blueprint(match_room_bp)
-app.register_blueprint(practice_stt_bp)
+# Note: practice_stt is now handled by FastAPI in server.py, not Quart
