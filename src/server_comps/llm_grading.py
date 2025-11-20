@@ -125,7 +125,7 @@ class InterviewGrader:
         
         return result
 
-    def grade_answer(self, question: Question, answer: str, player_uuid: Optional[str] = None) -> Dict:
+    def grade_answer(self, question: Question, answer: str, player_uuid: Optional[str] = None, criteria: Optional[str] = None) -> Dict:
         """
         Grade an interview answer using Gemini AI with prompt injection protection.
         

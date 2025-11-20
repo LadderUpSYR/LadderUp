@@ -294,7 +294,8 @@ async def practice_stt_websocket_handler(websocket: WebSocket):
         traceback.print_exc()
     
     finally:
-        # Cleanup
+
+        
         if connection_id in audio_buffers:
             del audio_buffers[connection_id]
         if connection_id in last_transcriptions:
