@@ -539,6 +539,7 @@ class SubmitAnswerRequest(BaseModel):
     question: str
     answer: str
     answerCriteria: Optional[str] = None
+    videoAnalytics: Optional[dict] = None  # Optional video tracking metrics
 
 @app.post("/api/question/submit")
 async def submit_answer(request: Request, data: SubmitAnswerRequest):
@@ -560,11 +561,23 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
     try:
         # Grade the answer using LLM
         from src.server_comps.llm_grading import get_grader
+        from src.utils.yamlparser import Question
+        
+        # Create a Question object for the grader
+        question_obj = Question(
+            id=0,  # No ID for practice mode questions
+            question=data.question,
+            answer_criteria=data.answerCriteria,
+            passing_score=0.0,  # No passing score for practice mode
+            metadata_yaml=None  # No YAML metadata for practice mode questions
+        )
+        
         grader = get_grader()
         grading_result = grader.grade_answer(
-            question=data.question,
+            question=question_obj,
             answer=data.answer,
-            criteria=data.answerCriteria
+            player_uuid=None,  # No player UUID for practice mode
+            video_analytics=data.videoAnalytics  # Pass video analytics to grader
         )
         
         # Get user's current profile
@@ -589,6 +602,10 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
             "date": datetime.now(timezone.utc).isoformat(),
             "gradedBy": "gemini-ai"
         }
+        
+        # Include video metrics if provided
+        if data.videoAnalytics:
+            answer_record["videoMetrics"] = data.videoAnalytics
 
         # Check if question was already answered - update with latest score
         existing_index = None

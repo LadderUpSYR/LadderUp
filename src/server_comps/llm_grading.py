@@ -125,14 +125,19 @@ class InterviewGrader:
         
         return result
 
-    def grade_answer(self, question: Question, answer: str, player_uuid: Optional[str] = None) -> Dict:
+    def grade_answer(self, question: Question, answer: str, player_uuid: Optional[str] = None, video_analytics: Optional[Dict] = None) -> Dict:
         """
         Grade an interview answer using Gemini AI with prompt injection protection.
         
         Args:
             question: The interview question that was asked
             answer: The candidate's response
-            criteria: Optional grading criteria or guidelines
+            player_uuid: Optional player UUID for personalized criteria
+            video_analytics: Optional dict with video analysis data:
+                - averageAttentionScore: Average attention score (0-100)
+                - attentionPercentage: Percentage of time looking at camera
+                - dominantEmotion: Most common emotion detected
+                - dominantEmotionPercentage: Percentage of time showing dominant emotion
             
         Returns:
             Dict containing:
@@ -140,6 +145,7 @@ class InterviewGrader:
                 - feedback (str): Detailed feedback on the answer
                 - strengths (list): Key strengths identified
                 - improvements (list): Suggested areas for improvement
+                - videoMetrics (dict): Video analytics data (if provided)
         """
         # Build the grading prompt
         # criteria needs to come from the yaml parser
@@ -160,7 +166,7 @@ class InterviewGrader:
                 else:
                     criteria = yaml_criteria
             
-            prompt = self._build_grading_prompt(question_text, answer, criteria)
+            prompt = self._build_grading_prompt(question_text, answer, criteria, video_analytics)
             
             # Generate response from Gemini
             response = self.model.generate_content(prompt)
@@ -170,6 +176,10 @@ class InterviewGrader:
             
             # Sanitize output to prevent prompt leakage
             result = self._sanitize_output(result)
+            
+            # Include video analytics in the result if provided
+            if video_analytics:
+                result["videoMetrics"] = video_analytics
             
             return result
             
@@ -195,8 +205,8 @@ class InterviewGrader:
                 "error": True
             }
     
-    def _build_grading_prompt(self, question: str, answer: str, criteria: Optional[str]) -> str:
-        """Build the prompt for Gemini to grade the interview answer with prompt injection protection"""
+    def _build_grading_prompt(self, question: str, answer: str, criteria: Optional[str], video_analytics: Optional[Dict] = None) -> str:
+        """Build the prompt for Gemini to grade the interview answer with prompt injection protection and optional video analytics"""
         
         base_prompt = f"""You are an expert interview coach evaluating a candidate's response to a behavioral interview question.
 
@@ -244,6 +254,27 @@ CANDIDATE'S ANSWER:
             base_prompt += f"""
 GRADING CRITERIA:
 {criteria}
+"""
+        
+        # Add video analytics if provided
+        if video_analytics:
+            base_prompt += f"""
+VIDEO ANALYSIS METRICS:
+This answer was delivered via video. Consider the following body language and presentation metrics in your evaluation:
+
+- Average Attention Score: {video_analytics.get('averageAttentionScore', 0):.1f}/100
+  (How consistently the candidate maintained eye contact with the camera)
+  
+- Attention Percentage: {video_analytics.get('attentionPercentage', 0):.1f}%
+  (Percentage of time the candidate was looking at the camera)
+
+IMPORTANT VIDEO GRADING GUIDELINES:
+- Good eye contact (attention score > 70) demonstrates confidence and engagement. Award points for strong eye contact.
+- Average eye contact (attention score 50-70) is acceptable but could be improved.
+- Poor eye contact (attention score < 50) may indicate nervousness or lack of preparation. Note this as an area for improvement.
+- Maintaining eye contact throughout the answer shows professionalism and helps build rapport with interviewers.
+- Body language and presentation are important but should not override the quality of the verbal answer content.
+- Use these metrics to provide specific, actionable feedback on presentation skills and eye contact.
 """
         
         base_prompt += """
