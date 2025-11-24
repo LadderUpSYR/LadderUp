@@ -220,14 +220,14 @@ function QuestionDebug() {
 
                             {submitResult.feedback && (
                                 <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
-                                    <h5 className="font-semibold text-gray-700 mb-2">📝 Feedback:</h5>
+                                    <h5 className="font-semibold text-gray-700 mb-2">Feedback:</h5>
                                     <p className="text-gray-600 text-sm leading-relaxed">{submitResult.feedback}</p>
                                 </div>
                             )}
 
                             {submitResult.strengths && submitResult.strengths.length > 0 && (
                                 <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
-                                    <h5 className="font-semibold text-green-700 mb-2">💪 Strengths:</h5>
+                                    <h5 className="font-semibold text-green-700 mb-2">Strengths:</h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.strengths.map((strength, idx) => (
                                             <li key={idx} className="text-green-600 text-sm">{strength}</li>
@@ -238,7 +238,7 @@ function QuestionDebug() {
 
                             {submitResult.improvements && submitResult.improvements.length > 0 && (
                                 <div className="mb-4 p-3 bg-white rounded-lg shadow-sm">
-                                    <h5 className="font-semibold text-blue-700 mb-2">🎯 Areas for Improvement:</h5>
+                                    <h5 className="font-semibold text-blue-700 mb-2">Areas for Improvement:</h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.improvements.map((improvement, idx) => (
                                             <li key={idx} className="text-blue-600 text-sm">{improvement}</li>
