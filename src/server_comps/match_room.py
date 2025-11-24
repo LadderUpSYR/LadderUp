@@ -123,7 +123,7 @@ async def start_match_timer_with_grading(match_id: str):
     """
     room_key = f"{ROOM_PREFIX}{match_id}"
     time_remaining = MATCH_DURATION_SECONDS
-    grading_completed = False
+    grading_lock_key = f"grading_lock:{match_id}"
     
     try:
         while time_remaining > 0:
@@ -162,9 +162,9 @@ async def start_match_timer_with_grading(match_id: str):
             if time_remaining <= 10:
                 wait_time = 1  # Update every second in last 10 seconds
             elif time_remaining <= 30:
-                wait_time = 5  # Update every 5 seconds from 30 to 10
+                wait_time = 1  # Update every 5 seconds from 30 to 10
             else:
-                wait_time = 10  # Update every 10 seconds otherwise
+                wait_time = 1  # Update every 10 seconds otherwise
             
             # Don't wait longer than remaining time
             wait_time = min(wait_time, time_remaining)
@@ -173,22 +173,11 @@ async def start_match_timer_with_grading(match_id: str):
             time_remaining -= wait_time
         
         # Time's up! Only grade once
-        if not grading_completed:
-            print(f"Timer expired for match {match_id}, starting grading...")
-            
-            # Notify players that grading is starting
-            await broadcast_to_room(match_id, {
-                "type": "match_ending",
-                "message": "Time's up! Grading your answers..."
-            })
-            
-            # Grade the answers
-            await save_match_answers(match_id)
-            grading_completed = True
-            print(f"Grading completed for match {match_id}")
+        await attempt_grading(match_id, grading_lock_key, reason="Time expired")
         
         # Update room status to completed
         await update_room_status(match_id, RoomStatus.COMPLETED)
+        
         print(f"Match {match_id} completed via timer expiration")
         
     except asyncio.CancelledError:
@@ -196,39 +185,16 @@ async def start_match_timer_with_grading(match_id: str):
         print(f"Timer cancelled for match {match_id}")
         
         # Only grade if not already done
-        if not grading_completed:
-            print(f"Starting grading for cancelled match {match_id}...")
-            
-            # Notify players
-            await broadcast_to_room(match_id, {
-                "type": "match_ending",
-                "message": "Match ended. Grading your answers..."
-            })
-            
-            # Grade the answers
-            await save_match_answers(match_id)
-            grading_completed = True
-            print(f"Grading completed for cancelled match {match_id}")
-        else:
-            print(f"Grading already completed for match {match_id}, skipping")
+        await attempt_grading(match_id, grading_lock_key, reason="Manual completion")
         
-        # Update room status
+        # Update status (re-raise to ensure task cleanup works if needed)
         await update_room_status(match_id, RoomStatus.COMPLETED)
-        raise  # Re-raise the CancelledError to properly handle the cancellation
+        raise
         
     except Exception as e:
-        # Unexpected error
         print(f"Unexpected error in timer for match {match_id}: {e}")
-        
-        # Try to save answers if possible
-        if not grading_completed:
-            try:
-                await save_match_answers(match_id)
-                grading_completed = True
-            except Exception as save_error:
-                print(f"Failed to save answers after error: {save_error}")
-        
-        # Update status to completed or abandoned
+        # Try to save anyway on error
+        await attempt_grading(match_id, grading_lock_key, reason="Error recovery")
         await update_room_status(match_id, RoomStatus.COMPLETED)
         raise
         
@@ -237,6 +203,30 @@ async def start_match_timer_with_grading(match_id: str):
         if match_id in active_timers:
             del active_timers[match_id]
             print(f"Cleaned up timer reference for match {match_id}")
+
+async def attempt_grading(match_id: str, lock_key: str, reason: str):
+    """
+    Atomically checks if grading has been done using Redis SETNX.
+    If not, runs the grading logic.
+    """
+    # SETNX returns True (1) if the key was set, False (0) if it already existed
+    # We set a TTL of 300 seconds just to prevent dead keys in Redis
+    acquired_lock = await redis_client.setnx(lock_key, "locked")
+    
+    if acquired_lock:
+        await redis_client.expire(lock_key, 300) # Clean up lock eventually
+        print(f"🔒 Logic Lock Acquired for {match_id}. Grading triggered by: {reason}")
+        
+        # Notify players
+        await broadcast_to_room(match_id, {
+            "type": "match_ending",
+            "message": f"Match ended ({reason}). Grading your answers..."
+        })
+        
+        # ACTUAL GRADING
+        await save_match_answers(match_id)
+    else:
+        print(f"⚠️ Grading skipped for {match_id} (Reason: {reason}) - Already graded/locked.")
 
 
 async def cancel_match_timer(match_id: str):
@@ -697,11 +687,12 @@ async def force_complete_match(match_id: str):
     })
     
     # Cancel timer if running
-    await cancel_match_timer(match_id)
+    grading_lock_key = f"grading_lock:{match_id}"
+    await attempt_grading(match_id, grading_lock_key, reason="Force Complete API")
     
-    # This will trigger grading via the timer's except handler
-    return jsonify({"success": True, "message": "Match completion initiated"})
+    await update_room_status(match_id, RoomStatus.COMPLETED)
 
+    return jsonify({"success": True, "message": "Match completed"})
 
 @match_room_bp.route("/api/match/<match_id>/transcript", methods=["GET"])
 async def get_current_transcript(match_id: str):
