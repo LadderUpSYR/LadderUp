@@ -6,7 +6,7 @@ Handles room creation, player authentication, timed questions, video streaming, 
 import json
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List
 import redis.asyncio as redis
 from quart import Blueprint, websocket, request, jsonify
 from dataclasses import dataclass, asdict
@@ -30,11 +30,11 @@ def get_whisper_model():
 
 # Constants
 ROOM_PREFIX = "room:"
-ROOM_TTL_SECONDS = 3600  # 1 hour room lifetime
+ROOM_TTL_SECONDS = 600  # 10 min
 ACTIVE_ROOMS_SET = "active_rooms"
-MATCH_DURATION_SECONDS = 420  # 7 minutes (420 seconds) for the match
+MATCH_DURATION_SECONDS = 20  # 7 minutes (420 seconds) for the match
 AUDIO_RATE = 16000  # 16kHz sample rate
-CHUNK_DURATION = 3  # Process audio every 3 seconds
+CHUNK_DURATION = 4  # Process audio every 1 seconds
 
 match_room_bp = Blueprint("match_room", __name__)
 
@@ -70,6 +70,8 @@ active_connections: Dict[str, Dict[str, any]] = {}
 # Audio buffers for each player (for continuous transcription)
 # Key: f"{match_id}:{player_uid}", Value: list of audio chunks
 audio_buffers: Dict[str, list] = {}
+
+player_answers: Dict[str, List[str]] = {}
 
 # Active timers for match countdown
 active_timers: Dict[str, asyncio.Task] = {}
@@ -115,21 +117,20 @@ async def get_random_question_from_firestore():
         }
 
 
-async def start_match_timer(match_id: str):
+async def start_match_timer_with_grading(match_id: str):
     """
-    Start a countdown timer for the match
-    Broadcasts time updates every 30 seconds
-    Automatically completes match when time expires
+    Match timer that triggers answer grading when time expires
     """
     room_key = f"{ROOM_PREFIX}{match_id}"
     time_remaining = MATCH_DURATION_SECONDS
+    grading_completed = False
     
     try:
         while time_remaining > 0:
             # Update time remaining in Redis
             await redis_client.hset(room_key, "time_remaining", str(time_remaining))
             
-            # Broadcast time update to all players
+            # Broadcast time update
             await broadcast_to_room(match_id, {
                 "type": "time_update",
                 "time_remaining": time_remaining,
@@ -137,41 +138,105 @@ async def start_match_timer(match_id: str):
                 "seconds": time_remaining % 60
             })
             
-            if time_remaining == 60:  # 1 minute warning
+            # Warning messages at specific intervals
+            if time_remaining == 60:
                 await broadcast_to_room(match_id, {
                     "type": "time_warning",
                     "message": "1 minute remaining!",
                     "time_remaining": 60
                 })
-            elif time_remaining == 30:  # 30 second warning
+            elif time_remaining == 30:
                 await broadcast_to_room(match_id, {
-                    "type": "time_warning",
+                    "type": "time_warning", 
                     "message": "30 seconds remaining!",
                     "time_remaining": 30
                 })
+            elif time_remaining == 10:
+                await broadcast_to_room(match_id, {
+                    "type": "time_warning",
+                    "message": "10 seconds! Wrap up your answer!",
+                    "time_remaining": 10
+                })
             
-            # Wait 30 seconds before next update (or less if near end)
-            wait_time = min(30, time_remaining)
+            # Determine wait time based on remaining time
+            if time_remaining <= 10:
+                wait_time = 1  # Update every second in last 10 seconds
+            elif time_remaining <= 30:
+                wait_time = 5  # Update every 5 seconds from 30 to 10
+            else:
+                wait_time = 10  # Update every 10 seconds otherwise
+            
+            # Don't wait longer than remaining time
+            wait_time = min(wait_time, time_remaining)
+            
             await asyncio.sleep(wait_time)
             time_remaining -= wait_time
         
-        # Time expired - complete the match
+        # Time's up! Only grade once
+        if not grading_completed:
+            print(f"Timer expired for match {match_id}, starting grading...")
+            
+            # Notify players that grading is starting
+            await broadcast_to_room(match_id, {
+                "type": "match_ending",
+                "message": "Time's up! Grading your answers..."
+            })
+            
+            # Grade the answers
+            await save_match_answers(match_id)
+            grading_completed = True
+            print(f"Grading completed for match {match_id}")
+        
+        # Update room status to completed
         await update_room_status(match_id, RoomStatus.COMPLETED)
-        await broadcast_to_room(match_id, {
-            "type": "match_time_expired",
-            "message": "Time's up! Match completed."
-        })
-        
-        print(f"Match {match_id} timer expired - match completed")
-        
+        print(f"Match {match_id} completed via timer expiration")
         
     except asyncio.CancelledError:
-        # Timer was cancelled (manual completion or abandonment)
+        # Timer was cancelled (e.g., manual completion or disconnection)
         print(f"Timer cancelled for match {match_id}")
+        
+        # Only grade if not already done
+        if not grading_completed:
+            print(f"Starting grading for cancelled match {match_id}...")
+            
+            # Notify players
+            await broadcast_to_room(match_id, {
+                "type": "match_ending",
+                "message": "Match ended. Grading your answers..."
+            })
+            
+            # Grade the answers
+            await save_match_answers(match_id)
+            grading_completed = True
+            print(f"Grading completed for cancelled match {match_id}")
+        else:
+            print(f"Grading already completed for match {match_id}, skipping")
+        
+        # Update room status
+        await update_room_status(match_id, RoomStatus.COMPLETED)
+        raise  # Re-raise the CancelledError to properly handle the cancellation
+        
+    except Exception as e:
+        # Unexpected error
+        print(f"Unexpected error in timer for match {match_id}: {e}")
+        
+        # Try to save answers if possible
+        if not grading_completed:
+            try:
+                await save_match_answers(match_id)
+                grading_completed = True
+            except Exception as save_error:
+                print(f"Failed to save answers after error: {save_error}")
+        
+        # Update status to completed or abandoned
+        await update_room_status(match_id, RoomStatus.COMPLETED)
+        raise
+        
     finally:
         # Clean up timer reference
         if match_id in active_timers:
             del active_timers[match_id]
+            print(f"Cleaned up timer reference for match {match_id}")
 
 
 async def cancel_match_timer(match_id: str):
@@ -361,14 +426,125 @@ async def broadcast_to_room(match_id: str, message: dict, exclude_player: Option
             import traceback
             traceback.print_exc()
 
-async def process_audio_chunk(match_id: str, player_uid: str, audio_chunk: bytes):
+async def accumulate_transcription(match_id: str, player_uid: str, text: str):
     """
-    Process audio chunk with Whisper STT and broadcast transcription
+    Accumulate transcription segments for a player during the match
     
     Args:
         match_id: The room ID
-        player_uid: The player sending audio
-        audio_chunk: Binary audio data (int16 PCM)
+        player_uid: The player who spoke
+        text: The transcribed text segment
+    """
+    key = f"{match_id}:{player_uid}"
+    
+    if key not in player_answers:
+        player_answers[key] = []
+    
+    player_answers[key].append(text)
+    
+    # Log for debugging
+    total_words = sum(len(seg.split()) for seg in player_answers[key])
+    print(f"[{match_id}] {player_uid}: Accumulated {total_words} words")
+
+
+async def save_match_answers(match_id: str):
+    """
+    Called when match ends - compile, save, and grade all answers
+    
+    Args:
+        match_id: The match room ID
+    """
+    print(f"Starting end-of-match grading for match {match_id}")
+    
+    # Get room data
+    room_data = await get_match_room(match_id)
+    if not room_data:
+        print(f"No room data found for match {match_id}")
+        return
+    
+    question_id = room_data.get('question_id')
+    if not question_id:
+        print(f"No question ID found for match {match_id}")
+        return
+    
+    # Import the answer service
+    from .answer_to_db_middleware import answer_to_db_middleware
+    
+    # Process both players
+    players = [room_data['player1_uid'], room_data['player2_uid']]
+    grading_results = {}
+    
+    for player_uid in players:
+        key = f"{match_id}:{player_uid}"
+        
+        # Check if player has any transcriptions
+        if key not in player_answers or not player_answers[key]:
+            print(f"No answer found for player {player_uid}")
+            grading_results[player_uid] = {
+                "status": "no_answer",
+                "message": "No answer recorded"
+            }
+            continue
+        
+        # Compile the complete answer
+        answer_segments = player_answers[key]
+        complete_answer = " ".join(answer_segments)
+        
+        # Clean up extra spaces
+        complete_answer = " ".join(complete_answer.split())
+        
+        word_count = len(complete_answer.split())
+        print(f"Player {player_uid} answer: {word_count} words")
+        
+        try:
+            # Grade and save the answer
+            result = await answer_to_db_middleware(
+                answer=complete_answer,
+                question_id=question_id,
+                player_uuid=player_uid
+            )
+            
+            grading_results[player_uid] = {
+                "status": "success",
+                "score": result['score'],
+                "feedback": result.get('feedback', ''),
+                "strengths": result.get('strengths', []),
+                "improvements": result.get('improvements', []),
+                "word_count": word_count
+            }
+            
+            print(f"Successfully graded answer for {player_uid}: Score {result['score']}/10")
+            
+        except Exception as e:
+            print(f"Error grading answer for {player_uid}: {e}")
+            grading_results[player_uid] = {
+                "status": "error",
+                "message": f"Grading failed: {str(e)}",
+                "word_count": word_count
+            }
+    
+    # Send grading results to all players
+    await broadcast_to_room(match_id, {
+        "type": "match_graded",
+        "results": grading_results,
+        "message": "Match completed and answers graded!"
+    })
+    
+    # Clean up answer buffers
+    for player_uid in players:
+        key = f"{match_id}:{player_uid}"
+        if key in player_answers:
+            del player_answers[key]
+    
+    print(f"Completed grading for match {match_id}")
+
+
+
+# ==================== MODIFIED AUDIO PROCESSING ====================
+
+async def process_audio_chunk_with_accumulation(match_id: str, player_uid: str, audio_chunk: bytes):
+    """
+    Process audio chunks and accumulate transcriptions for end-of-match grading
     """
     buffer_key = f"{match_id}:{player_uid}"
     
@@ -395,23 +571,29 @@ async def process_audio_chunk(match_id: str, player_uid: str, audio_chunk: bytes
             whisper = get_whisper_model()
             segments, info = whisper.transcribe(audio_float, language="en")
             
-            # Collect all transcribed text
+            # Collect transcribed text
             transcription_text = ""
             for segment in segments:
                 text = segment.text.strip()
                 if text:
                     transcription_text += text + " "
             
-            # Broadcast transcription to room if not empty
+            # Process non-empty transcriptions
             if transcription_text.strip():
+                # Accumulate for end-of-match grading
+                await accumulate_transcription(
+                    match_id,
+                    player_uid,
+                    transcription_text.strip()
+                )
+                
+                # Broadcast for real-time display (without saving)
                 await broadcast_to_room(match_id, {
                     "type": "transcription",
                     "player": player_uid,
                     "text": transcription_text.strip(),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
-                
-                print(f"[{match_id}] {player_uid}: {transcription_text.strip()}")
             
             # Keep last 0.5s for context overlap
             overlap_samples = int(AUDIO_RATE * 0.5)
@@ -419,9 +601,14 @@ async def process_audio_chunk(match_id: str, player_uid: str, audio_chunk: bytes
             audio_buffers[buffer_key] = [audio_data[-overlap_bytes:]]
             
         except Exception as e:
-            print(f"Error processing audio for {player_uid} in {match_id}: {e}")
-            # Clear buffer on error
+            print(f"Error processing audio for {player_uid}: {e}")
             audio_buffers[buffer_key] = []
+
+
+process_audio_chunk = process_audio_chunk_with_accumulation
+
+# 2. Replace your existing start_match_timer with:
+start_match_timer = start_match_timer_with_grading
 
 
 # ==================== HTTP ENDPOINTS ====================
@@ -473,6 +660,89 @@ async def get_room_info(match_id: str):
         }
     
     return jsonify(response_data)
+
+@match_room_bp.route("/api/match/<match_id>/force_complete", methods=["POST"])
+async def force_complete_match(match_id: str):
+    """
+    Manually complete a match and trigger grading
+    Used for testing or admin purposes
+    """
+    from .server import get_session, SESSION_COOKIE_NAME
+    
+    # Authenticate user
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    session_data = await get_session(session_token)
+    if not session_data:
+        return jsonify({"error": "Invalid session"}), 401
+    
+    player_uid = session_data["uid"]
+    
+    # Verify access
+    if not await verify_player_access(match_id, player_uid):
+        return jsonify({"error": "Access denied"}), 403
+    
+    # Get room status
+    room_data = await get_match_room(match_id)
+    if room_data and room_data['status'] == RoomStatus.COMPLETED.value:
+        return jsonify({"error": "Match already completed"}), 400
+    
+    # Notify players
+    await broadcast_to_room(match_id, {
+        "type": "match_ending",
+        "message": "Match ended manually. Grading answers...",
+        "ended_by": player_uid
+    })
+    
+    # Cancel timer if running
+    await cancel_match_timer(match_id)
+    
+    # This will trigger grading via the timer's except handler
+    return jsonify({"success": True, "message": "Match completion initiated"})
+
+
+@match_room_bp.route("/api/match/<match_id>/transcript", methods=["GET"])
+async def get_current_transcript(match_id: str):
+    """
+    Get the current accumulated transcript for a player (for preview only)
+    Does NOT trigger grading
+    """
+    from .server import get_session, SESSION_COOKIE_NAME
+    
+    # Authenticate user
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    session_data = await get_session(session_token)
+    if not session_data:
+        return jsonify({"error": "Invalid session"}), 401
+    
+    player_uid = session_data["uid"]
+    
+    # Verify access
+    if not await verify_player_access(match_id, player_uid):
+        return jsonify({"error": "Access denied"}), 403
+    
+    # Get current accumulated answer
+    key = f"{match_id}:{player_uid}"
+    if key not in player_answers:
+        return jsonify({
+            "transcript": "",
+            "word_count": 0,
+            "segment_count": 0
+        })
+    
+    segments = player_answers[key]
+    full_transcript = " ".join(segments)
+    
+    return jsonify({
+        "transcript": full_transcript,
+        "word_count": len(full_transcript.split()),
+        "segment_count": len(segments)
+    })
 
 
 @match_room_bp.route("/api/match/<match_id>/ready", methods=["POST"])

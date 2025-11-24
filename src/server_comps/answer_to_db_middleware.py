@@ -28,9 +28,9 @@ async def answer_to_db_middleware(
         ValueError: If question or user not found
     """
     # Import here to avoid circular imports
-    from src.server import db
+    from src.server_comps.server import db
     from src.server_comps.llm_grading import get_grader
-    
+    print("got here")
     # Get the question from database
     question_doc = db.collection("questions").document(question_id).get()
     
@@ -40,7 +40,7 @@ async def answer_to_db_middleware(
     question_data = question_doc.to_dict()
     question = Question(
         id=question_data["id"],
-        text=question_data["text"],  # Changed from "question" to "text"
+        question=question_data["question"],
         answer_criteria=question_data.get("answer_criteria"),
         passing_score=question_data.get("passing_score", 7.0),
         avg_score=question_data.get("avg_score", 1.0),

@@ -2,9 +2,9 @@ from quart import Blueprint, websocket, Quart
 from quart_cors import cors
 import asyncio
 import json
-from server_comps.matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
-from server_comps.match_room import match_room_bp
-from server_comps.server import get_session
+from src.server_comps.matchmaking import enqueue_player, dequeue_player, try_match_players, listen_for_match
+from src.server_comps.match_room import match_room_bp
+from src.server_comps.server import get_session
 
 
 
