@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useDarkMode } from "../utils/useDarkMode";
 import { usePracticeAudioCapture } from "./usePracticeAudioCapture";
+import { usePracticeVideoCapture } from "./usePracticeVideoCapture";
 import "../App.css";
 
 const API_BASE = "http://localhost:8000";
@@ -705,8 +706,8 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
 
 /**
  * AudioPracticeMode Component
- * Audio-based practice mode with voice recording, transcription, and answer submission
- * Includes placeholder for future facial tracking integration
+ * Audio/video-based practice mode with voice recording, transcription, face tracking, and answer submission
+ * Integrates facial tracking for attention and emotion analysis
  */
 function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
     const [question, setQuestion] = useState("");
@@ -716,7 +717,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
     const [submitting, setSubmitting] = useState(false);
     const [submitResult, setSubmitResult] = useState(null);
     const [poorlyAnswered, setPoorlyAnswered] = useState([]); // Questions scored < 7
-    const [showVideoPlaceholder, setShowVideoPlaceholder] = useState(false);
+    const [videoEnabled, setVideoEnabled] = useState(false);
     
     // Audio capture hook
     const {
@@ -729,6 +730,24 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
         clearTranscript,
         resetWhileRecording
     } = usePracticeAudioCapture();
+
+    // Video capture hook
+    const {
+        videoRef,
+        canvasRef,
+        isVideoReady,
+        isTracking,
+        videoError,
+        faceLandmarker,
+        currentAttention,
+        currentEmotion,
+        startVideo,
+        stopVideo,
+        startTracking,
+        stopTracking,
+        getTrackingMetrics,
+        resetTracking
+    } = usePracticeVideoCapture();
 
     const getRandomQuestion = async () => {
         try {
@@ -744,11 +763,53 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
             setAnswerCriteria(data.answerCriteria || "");
             setCurrentQuestionId(data.questionId || "random-" + Date.now());
             clearTranscript();
+            resetTracking();
             setSubmitResult(null);
             setError("");
         } catch (err) {
             console.error(err);
             setError(err.message);
+        }
+    };
+
+    const handleToggleRecording = async () => {
+        if (!isRecording) {
+            // Starting recording
+            // Reset tracking data first to ensure we start fresh
+            if (videoEnabled && isVideoReady) {
+                resetTracking();
+                console.log('Reset tracking before starting recording');
+            }
+            
+            toggleRecording();
+            
+            // Start video tracking if video is enabled and ready
+            if (videoEnabled && isVideoReady && !isTracking) {
+                startTracking();
+            }
+        } else {
+            // Stopping recording
+            toggleRecording();
+            
+            // Stop video tracking but DON'T reset yet - we need the data for submission
+            if (isTracking) {
+                stopTracking();
+            }
+        }
+    };
+
+    const handleToggleVideo = async () => {
+        if (!videoEnabled) {
+            // Enable video
+            setVideoEnabled(true);
+            await startVideo();
+        } else {
+            // Disable video
+            if (isTracking) {
+                stopTracking();
+            }
+            stopVideo();
+            setVideoEnabled(false);
         }
     };
 
@@ -769,6 +830,13 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
         setError("");
 
         try {
+            // Get video analytics if tracking was used
+            let videoAnalytics = null;
+            if (videoEnabled && isVideoReady) {
+                videoAnalytics = getTrackingMetrics();
+                console.log("Video analytics:", videoAnalytics);
+            }
+
             const result = await fetch(`${API_BASE}/api/question/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -778,6 +846,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                     question: question,
                     answer: fullTranscript, // Use transcript as answer
                     answerCriteria: answerCriteria,
+                    videoAnalytics: videoAnalytics  // Include video analytics
                 }),
             });
 
@@ -796,7 +865,8 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                 strengths: data.grading?.strengths || [],
                 improvements: data.grading?.improvements || [],
                 message: data.msg,
-                totalAnswered: data.total_answered
+                totalAnswered: data.total_answered,
+                videoMetrics: videoAnalytics  // Store video metrics in result
             });
             
             // Track poorly answered questions (score < 7) for retry
@@ -819,6 +889,12 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
             
             // Clear transcript after successful submission
             clearTranscript();
+            
+            // Reset tracking data after successful submission
+            if (videoEnabled) {
+                resetTracking();
+                console.log('Reset tracking after submission');
+            }
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -1052,44 +1128,106 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     Your Response
                                 </h3>
                                 <button
-                                    onClick={() => setShowVideoPlaceholder(!showVideoPlaceholder)}
-                                    className={`text-sm px-3 py-1 rounded transition-colors ${
-                                        isDarkMode
-                                            ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    onClick={handleToggleVideo}
+                                    disabled={isRecording || submitting}
+                                    className={`text-sm px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
+                                        isRecording || submitting
+                                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                                            : videoEnabled
+                                                ? isDarkMode
+                                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                                    : 'bg-red-500 text-white hover:bg-red-600'
+                                                : isDarkMode
+                                                    ? 'bg-sky-blue text-black hover:bg-sky-400'
+                                                    : 'bg-sky-600 text-white hover:bg-sky-700'
                                     }`}
                                 >
-                                    {showVideoPlaceholder ? '🎤 Audio Only' : '📹 Show Camera'}
+                                    {videoEnabled ? '🎤 Audio Only' : '📹 Enable Video Tracking'}
                                 </button>
                             </div>
 
-                            {/* Video Placeholder for future facial tracking */}
-                            {showVideoPlaceholder && (
-                                <div className={`mb-4 rounded-lg overflow-hidden border-2 ${
-                                    isDarkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-300 bg-gray-100'
-                                }`}>
-                                    <div className="aspect-video flex items-center justify-center">
-                                        <div className="text-center">
-                                            <div className="text-6xl mb-4">📹</div>
-                                            <p className={`text-sm ${
-                                                isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                                            }`}>
-                                                Camera feature coming soon
-                                            </p>
-                                            <p className={`text-xs mt-2 ${
-                                                isDarkMode ? 'text-gray-600' : 'text-gray-500'
-                                            }`}>
-                                                Facial tracking will be integrated here
-                                            </p>
+                            {/* Video with Face Tracking */}
+                            {videoEnabled && (
+                                <div className="mb-4 space-y-3">
+                                    <div className={`rounded-lg overflow-hidden border-2 ${
+                                        isDarkMode ? 'border-gray-700' : 'border-gray-300'
+                                    }`}>
+                                        <div className="relative">
+                                            <video
+                                                ref={videoRef}
+                                                autoPlay
+                                                playsInline
+                                                muted
+                                                className="hidden"
+                                            />
+                                            <canvas
+                                                ref={canvasRef}
+                                                className="w-full h-auto"
+                                                style={{ maxHeight: '400px' }}
+                                            />
+                                            
+                                            {!isVideoReady && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                                                    <div className="text-center">
+                                                        <div className="text-4xl mb-2">📹</div>
+                                                        <p className="text-white text-sm">Starting camera...</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
+
+                                    {/* Real-time Video Metrics Display */}
+                                    {isVideoReady && (
+                                        <div className={`rounded-lg p-4 ${
+                                            isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+                                        }`}>
+                                            {/* Attention Score */}
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-2xl">👁️</span>
+                                                    <div>
+                                                        <span className={`text-sm font-semibold block ${
+                                                            isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                                        }`}>
+                                                            Attention Score
+                                                        </span>
+                                                        <span className={`text-xs ${
+                                                            currentAttention.isLookingAtCamera
+                                                                ? 'text-green-500'
+                                                                : 'text-red-500'
+                                                        }`}>
+                                                            {currentAttention.isLookingAtCamera ? '✓ Looking at camera' : '✗ Not looking'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className={`flex items-baseline gap-1 ${
+                                                    isDarkMode ? 'text-sky-blue' : 'text-sky-600'
+                                                }`}>
+                                                    <span className="text-3xl font-bold">
+                                                        {currentAttention.attentionScore.toFixed(0)}
+                                                    </span>
+                                                    <span className="text-sm">/ 100</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Video Error */}
+                                    {videoError && (
+                                        <div className={`rounded-lg p-3 ${
+                                            isDarkMode ? 'bg-red-900/30' : 'bg-red-50'
+                                        }`}>
+                                            <p className="text-red-500 text-sm">⚠️ {videoError}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {/* Recording Controls */}
                             <div className="flex justify-center items-center gap-4 mb-4">
                                 <button
-                                    onClick={toggleRecording}
+                                    onClick={handleToggleRecording}
                                     disabled={!isSupported || submitting}
                                     className={`px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
                                         !isSupported || submitting
@@ -1116,7 +1254,10 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                 {/* Clear/Reset Button */}
                                 {(transcript || interimTranscript) && (
                                     <button
-                                        onClick={resetWhileRecording}
+                                        onClick={() => {
+                                            resetWhileRecording();
+                                            resetTracking();
+                                        }}
                                         disabled={submitting}
                                         className={`px-6 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
                                             submitting
@@ -1226,6 +1367,58 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         isDarkMode ? 'text-gray-400' : 'text-gray-600'
                                     }`}>
                                         {submitResult.feedback}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Video Metrics */}
+                            {submitResult.videoMetrics && (
+                                <div className={`mb-4 p-4 rounded-lg shadow-sm transition-colors duration-500 ${
+                                    isDarkMode ? 'bg-gray-800' : 'bg-white'
+                                }`}>
+                                    <h5 className={`font-semibold mb-3 ${
+                                        isDarkMode ? 'text-purple-400' : 'text-purple-700'
+                                    }`}>
+                                        📹 Video Analysis
+                                    </h5>
+                                    {/* Attention Score */}
+                                    <div className={`rounded p-4 ${
+                                        isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+                                    }`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-2xl">👁️</span>
+                                            <span className={`text-sm font-semibold ${
+                                                isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                            }`}>
+                                                Eye Contact & Attention
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline gap-2 mb-2">
+                                            <span className={`text-3xl font-bold ${
+                                                submitResult.videoMetrics.averageAttentionScore > 70
+                                                    ? 'text-green-500'
+                                                    : submitResult.videoMetrics.averageAttentionScore > 50
+                                                    ? 'text-yellow-500'
+                                                    : 'text-red-500'
+                                            }`}>
+                                                {submitResult.videoMetrics.averageAttentionScore.toFixed(0)}
+                                            </span>
+                                            <span className={`text-lg ${
+                                                isDarkMode ? 'text-gray-500' : 'text-gray-600'
+                                            }`}>
+                                                / 100
+                                            </span>
+                                        </div>
+                                        <p className={`text-sm ${
+                                            isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                        }`}>
+                                            You maintained eye contact <span className="font-semibold">{submitResult.videoMetrics.attentionPercentage.toFixed(0)}%</span> of the time
+                                        </p>
+                                    </div>
+                                    <p className={`text-xs mt-3 italic ${
+                                        isDarkMode ? 'text-gray-500' : 'text-gray-500'
+                                    }`}>
+                                        💡 This metric was analyzed and incorporated into your grade
                                     </p>
                                 </div>
                             )}
