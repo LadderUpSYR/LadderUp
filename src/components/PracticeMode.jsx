@@ -32,48 +32,30 @@ function PracticeMode() {
     // Render mode selection screen
     if (selectedMode === null) {
         return (
-            <div className={`min-h-screen relative overflow-hidden transition-colors duration-500 ${
+            <div className={`min-h-screen relative transition-colors duration-500 ${
                 isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
             }`}>
-                {/* Animated background */}
-                <div className="fixed inset-0 overflow-hidden pointer-events-none">
-                    {[...Array(30)].map((_, i) => (
-                        <div
-                            key={i}
-                            className={`absolute w-1 h-1 rounded-full opacity-20 animate-float ${
-                                isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
-                            }`}
-                            style={{
-                                left: `${Math.random() * 100}%`,
-                                top: `${Math.random() * 100}%`,
-                                animationDelay: `${Math.random() * 5}s`,
-                                animationDuration: `${5 + Math.random() * 10}s`,
-                            }}
-                        />
-                    ))}
-                </div>
-
                 {/* Navigation */}
                 <nav className={`shadow-lg border-b transition-colors duration-500 ${
                     isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'
                 }`}>
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="flex justify-between items-center h-16">
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 sm:gap-4">
                                 <button
                                     onClick={handleBackToProfile}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
+                                    className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-sm sm:text-base ${
                                         isDarkMode 
                                             ? 'text-gray-300 hover:text-sky-blue hover:bg-gray-800' 
                                             : 'text-gray-700 hover:text-sky-600 hover:bg-gray-100'
                                     }`}
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                     </svg>
                                     Back
                                 </button>
-                                <h1 className={`text-2xl font-bold transition-colors duration-500 ${
+                                <h1 className={`text-lg sm:text-2xl font-bold transition-colors duration-500 ${
                                     isDarkMode ? 'text-sky-blue' : 'text-sky-600'
                                 }`}>Practice Mode</h1>
                             </div>
@@ -84,6 +66,7 @@ function PracticeMode() {
                                         ? 'bg-sky-blue focus:ring-sky-blue' 
                                         : 'bg-gray-300 focus:ring-sky-600'
                                 }`}
+                                aria-label="Toggle theme"
                             >
                                 <span
                                     className={`inline-block w-6 h-6 transform transition-transform duration-300 ease-in-out rounded-full shadow-lg ${
@@ -92,8 +75,16 @@ function PracticeMode() {
                                             : 'translate-x-1 bg-white'
                                     }`}
                                 >
-                                    <span className="flex items-center justify-center h-full text-xs">
-                                        {isDarkMode ? '🌙' : '☀️'}
+                                    <span className="flex items-center justify-center h-full">
+                                        {isDarkMode ? (
+                                            <svg className="w-4 h-4 text-sky-blue" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                                            </svg>
+                                        ) : (
+                                            <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                                            </svg>
+                                        )}
                                     </span>
                                 </span>
                             </button>
@@ -102,9 +93,9 @@ function PracticeMode() {
                 </nav>
 
                 {/* Main Content */}
-                <div className="max-w-7xl mx-auto px-4 py-12">
-                    <div className="text-center mb-12">
-                        <p className={`text-xl transition-colors duration-500 ${
+                <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
+                    <div className="text-center mb-8 sm:mb-12">
+                        <p className={`text-base sm:text-xl transition-colors duration-500 px-4 ${
                             isDarkMode ? 'text-gray-400' : 'text-gray-600'
                         }`}>
                             Choose your practice mode to sharpen your interview skills
@@ -112,11 +103,11 @@ function PracticeMode() {
                     </div>
 
                         {/* Mode Selection Cards */}
-                        <div className="grid md:grid-cols-2 gap-8">
+                        <div className="grid md:grid-cols-2 gap-4 sm:gap-8">
                             {/* Text Mode Card */}
                             <div
                                 onClick={() => setSelectedMode('text')}
-                                className={`relative group cursor-pointer rounded-2xl p-8 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl ${
+                                className={`relative group cursor-pointer rounded-2xl p-6 sm:p-8 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl ${
                                     isDarkMode
                                         ? 'bg-gray-800 hover:bg-gray-750'
                                         : 'bg-white hover:bg-gray-50'
@@ -125,8 +116,16 @@ function PracticeMode() {
                                 } hover:border-sky-500`}
                             >
                                 <div className="text-center">
-                                    <div className={`text-6xl mb-4 transition-transform duration-300 group-hover:scale-110`}>
-                                        📝
+                                    <div className={`mb-4 flex justify-center`}>
+                                        <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 ${
+                                            isDarkMode ? 'bg-sky-blue/20' : 'bg-sky-500/20'
+                                        }`}>
+                                            <svg className={`w-8 h-8 sm:w-10 sm:h-10 transition-colors duration-300 ${
+                                                isDarkMode ? 'text-sky-blue' : 'text-sky-600'
+                                            }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                        </div>
                                     </div>
                                     <h3 className={`text-2xl font-bold mb-3 transition-colors duration-500 ${
                                         isDarkMode ? 'text-sky-blue' : 'text-sky-600'
@@ -164,8 +163,16 @@ function PracticeMode() {
                                 } hover:border-sky-500`}
                             >
                                 <div className="text-center">
-                                    <div className={`text-6xl mb-4 transition-transform duration-300 group-hover:scale-110`}>
-                                        🎥
+                                    <div className={`mb-4 flex justify-center`}>
+                                        <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 ${
+                                            isDarkMode ? 'bg-purple-500/20' : 'bg-purple-500/20'
+                                        }`}>
+                                            <svg className={`w-8 h-8 sm:w-10 sm:h-10 transition-colors duration-300 ${
+                                                isDarkMode ? 'text-purple-400' : 'text-purple-600'
+                                            }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                            </svg>
+                                        </div>
                                     </div>
                                     <h3 className={`text-2xl font-bold mb-3 transition-colors duration-500 ${
                                         isDarkMode ? 'text-sky-blue' : 'text-sky-600'
@@ -202,22 +209,28 @@ function PracticeMode() {
                                 }`}>
                                     Practice Features
                                 </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xl">✨</span>
-                                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+                                <div className="flex flex-col md:flex-row justify-center items-center gap-6 md:gap-8">
+                                    <div className="flex items-center gap-3">
+                                        <svg className={`w-6 h-6 flex-shrink-0 ${isDarkMode ? 'text-sky-blue' : 'text-sky-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                        </svg>
+                                        <span className={`text-sm sm:text-base ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                             AI-Powered Feedback
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xl">📊</span>
-                                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+                                    <div className="flex items-center gap-3">
+                                        <svg className={`w-6 h-6 flex-shrink-0 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                        <span className={`text-sm sm:text-base ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                             Detailed Scoring
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-2xl">🎯</span>
-                                        <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+                                    <div className="flex items-center gap-3">
+                                        <svg className={`w-6 h-6 flex-shrink-0 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                        </svg>
+                                        <span className={`text-sm sm:text-base ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                             Improvement Tips
                                         </span>
                                     </div>
@@ -363,26 +376,9 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
     };
 
     return (
-        <div className={`min-h-screen relative overflow-hidden transition-colors duration-500 ${
+        <div className={`min-h-screen relative transition-colors duration-500 ${
             isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
         }`}>
-            {/* Animated background */}
-            <div className="fixed inset-0 overflow-hidden pointer-events-none">
-                {[...Array(20)].map((_, i) => (
-                    <div
-                        key={i}
-                        className={`absolute w-1 h-1 rounded-full opacity-10 animate-float ${
-                            isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
-                        }`}
-                        style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 5}s`,
-                            animationDuration: `${5 + Math.random() * 10}s`,
-                        }}
-                    />
-                ))}
-            </div>
 
             {/* Navigation */}
             <nav className={`shadow-lg border-b transition-colors duration-500 ${
@@ -415,6 +411,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     ? 'bg-sky-blue focus:ring-sky-blue' 
                                     : 'bg-gray-300 focus:ring-sky-600'
                             }`}
+                            aria-label="Toggle theme"
                         >
                             <span
                                 className={`inline-block w-6 h-6 transform transition-transform duration-300 ease-in-out rounded-full shadow-lg ${
@@ -423,8 +420,16 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         : 'translate-x-1 bg-white'
                                 }`}
                             >
-                                <span className="flex items-center justify-center h-full text-xs">
-                                    {isDarkMode ? '🌙' : '☀️'}
+                                <span className="flex items-center justify-center h-full">
+                                    {isDarkMode ? (
+                                        <svg className="w-4 h-4 text-sky-blue" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
                                 </span>
                             </span>
                         </button>
@@ -456,7 +461,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         : 'bg-sky-600 text-white hover:bg-sky-700'
                                 }`}
                             >
-                                🎲 Random Question
+                                Random Question
                             </button>
 
                             {/* Next Question */}
@@ -468,7 +473,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         : 'bg-green-500 text-white hover:bg-green-600'
                                 }`}
                             >
-                                ➡️ Next Question
+                                Next Question
                             </button>
                         </div>
                     </div>
@@ -481,7 +486,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                             <h3 className={`text-lg font-semibold mb-3 ${
                                 isDarkMode ? 'text-orange-400' : 'text-orange-700'
                             }`}>
-                                🔄 Practice Weak Areas
+                                Practice Weak Areas
                             </h3>
                             <p className={`text-sm mb-4 ${
                                 isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -520,7 +525,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                         <div className={`rounded-lg p-4 mb-6 ${
                             isDarkMode ? 'bg-red-900/30 border border-red-500' : 'bg-red-50 border border-red-200'
                         }`}>
-                            <p className="text-red-500 font-semibold">⚠️ {error}</p>
+                            <p className="text-red-500 font-semibold">{error}</p>
                         </div>
                     )}
 
@@ -598,7 +603,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                             <h4 className={`font-bold text-2xl mb-4 ${
                                 isDarkMode ? 'text-green-400' : 'text-green-800'
                             }`}>
-                                ✓ Answer Graded!
+                                Answer Graded!
                             </h4>
                             
                             {/* Score */}
@@ -627,7 +632,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-gray-300' : 'text-gray-700'
                                     }`}>
-                                        📝 Feedback:
+                                        Feedback:
                                     </h5>
                                     <p className={`text-sm leading-relaxed ${
                                         isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -645,7 +650,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-green-400' : 'text-green-700'
                                     }`}>
-                                        💪 Strengths:
+                                        Strengths:
                                     </h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.strengths.map((strength, idx) => (
@@ -667,7 +672,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-blue-400' : 'text-blue-700'
                                     }`}>
-                                        🎯 Areas for Improvement:
+                                        Areas for Improvement:
                                     </h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.improvements.map((improvement, idx) => (
@@ -914,27 +919,9 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
     };
 
     return (
-        <div className={`min-h-screen relative overflow-hidden transition-colors duration-500 ${
+        <div className={`min-h-screen relative transition-colors duration-500 ${
             isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
         }`}>
-            {/* Animated background */}
-            <div className="fixed inset-0 overflow-hidden pointer-events-none">
-                {[...Array(20)].map((_, i) => (
-                    <div
-                        key={i}
-                        className={`absolute w-1 h-1 rounded-full opacity-10 animate-float ${
-                            isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
-                        }`}
-                        style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 5}s`,
-                            animationDuration: `${5 + Math.random() * 10}s`,
-                        }}
-                    />
-                ))}
-            </div>
-
             {/* Navigation */}
             <nav className={`shadow-lg border-b transition-colors duration-500 ${
                 isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'
@@ -966,6 +953,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     ? 'bg-sky-blue focus:ring-sky-blue' 
                                     : 'bg-gray-300 focus:ring-sky-600'
                             }`}
+                            aria-label="Toggle theme"
                         >
                             <span
                                 className={`inline-block w-6 h-6 transform transition-transform duration-300 ease-in-out rounded-full shadow-lg ${
@@ -974,8 +962,16 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         : 'translate-x-1 bg-white'
                                 }`}
                             >
-                                <span className="flex items-center justify-center h-full text-xs">
-                                    {isDarkMode ? '🌙' : '☀️'}
+                                <span className="flex items-center justify-center h-full">
+                                    {isDarkMode ? (
+                                        <svg className="w-4 h-4 text-sky-blue" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
                                 </span>
                             </span>
                         </button>
@@ -991,7 +987,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                         <div className={`rounded-lg p-4 mb-6 ${
                             isDarkMode ? 'bg-yellow-900/30 border border-yellow-500' : 'bg-yellow-50 border border-yellow-200'
                         }`}>
-                            <p className="text-yellow-600 font-semibold">⚠️ Speech recognition not supported in this browser. Please use Chrome or Edge for audio practice.</p>
+                            <p className="text-yellow-600 font-semibold">Speech recognition not supported in this browser. Please use Chrome or Edge for audio practice.</p>
                         </div>
                     )}
 
@@ -1017,7 +1013,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                             : 'bg-sky-600 text-white hover:bg-sky-700'
                                 }`}
                             >
-                                🎲 Random Question
+                                Random Question
                             </button>
 
                             <button
@@ -1031,7 +1027,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                             : 'bg-green-500 text-white hover:bg-green-600'
                                 }`}
                             >
-                                ➡️ Next Question
+                                Next Question
                             </button>
                         </div>
                     </div>
@@ -1044,7 +1040,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                             <h3 className={`text-lg font-semibold mb-3 ${
                                 isDarkMode ? 'text-orange-400' : 'text-orange-700'
                             }`}>
-                                🔄 Practice Weak Areas
+                                Practice Weak Areas
                             </h3>
                             <p className={`text-sm mb-4 ${
                                 isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -1088,7 +1084,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                         <div className={`rounded-lg p-4 mb-6 ${
                             isDarkMode ? 'bg-red-900/30 border border-red-500' : 'bg-red-50 border border-red-200'
                         }`}>
-                            <p className="text-red-500 font-semibold">⚠️ {error || audioError}</p>
+                            <p className="text-red-500 font-semibold">{error || audioError}</p>
                         </div>
                     )}
 
@@ -1142,7 +1138,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                                     : 'bg-sky-600 text-white hover:bg-sky-700'
                                     }`}
                                 >
-                                    {videoEnabled ? '🎤 Audio Only' : '📹 Enable Video Tracking'}
+                                    {videoEnabled ? 'Audio Only' : 'Enable Video Tracking'}
                                 </button>
                             </div>
 
@@ -1169,8 +1165,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                             {!isVideoReady && (
                                                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                                                     <div className="text-center">
-                                                        <div className="text-4xl mb-2">📹</div>
-                                                        <p className="text-white text-sm">Starting camera...</p>
+                                                        <p className="text-white text-lg mb-2">Starting camera...</p>
                                                     </div>
                                                 </div>
                                             )}
@@ -1185,7 +1180,6 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                             {/* Attention Score */}
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-2xl">👁️</span>
                                                     <div>
                                                         <span className={`text-sm font-semibold block ${
                                                             isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -1197,7 +1191,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                                                 ? 'text-green-500'
                                                                 : 'text-red-500'
                                                         }`}>
-                                                            {currentAttention.isLookingAtCamera ? '✓ Looking at camera' : '✗ Not looking'}
+                                                            {currentAttention.isLookingAtCamera ? 'Looking at camera' : '✗ Not looking'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1218,7 +1212,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         <div className={`rounded-lg p-3 ${
                                             isDarkMode ? 'bg-red-900/30' : 'bg-red-50'
                                         }`}>
-                                            <p className="text-red-500 text-sm">⚠️ {videoError}</p>
+                                            <p className="text-red-500 text-sm">{videoError}</p>
                                         </div>
                                     )}
                                 </div>
@@ -1246,7 +1240,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         </>
                                     ) : (
                                         <>
-                                            🎤 Start Recording
+                                            Start Recording
                                         </>
                                     )}
                                 </button>
@@ -1268,7 +1262,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                         }`}
                                         title="Clear transcript and start over"
                                     >
-                                        🗑️ Clear
+                                        Clear
                                     </button>
                                 )}
                             </div>
@@ -1332,7 +1326,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                             <h4 className={`font-bold text-2xl mb-4 ${
                                 isDarkMode ? 'text-green-400' : 'text-green-800'
                             }`}>
-                                ✓ Answer Graded!
+                                Answer Graded!
                             </h4>
                             
                             {/* Score */}
@@ -1361,7 +1355,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-gray-300' : 'text-gray-700'
                                     }`}>
-                                        📝 Feedback:
+                                        Feedback:
                                     </h5>
                                     <p className={`text-sm leading-relaxed ${
                                         isDarkMode ? 'text-gray-400' : 'text-gray-600'
@@ -1379,14 +1373,13 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-3 ${
                                         isDarkMode ? 'text-purple-400' : 'text-purple-700'
                                     }`}>
-                                        📹 Video Analysis
+                                        Video Analysis
                                     </h5>
                                     {/* Attention Score */}
                                     <div className={`rounded p-4 ${
                                         isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
                                     }`}>
                                         <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-2xl">👁️</span>
                                             <span className={`text-sm font-semibold ${
                                                 isDarkMode ? 'text-gray-400' : 'text-gray-600'
                                             }`}>
@@ -1418,7 +1411,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <p className={`text-xs mt-3 italic ${
                                         isDarkMode ? 'text-gray-500' : 'text-gray-500'
                                     }`}>
-                                        💡 This metric was analyzed and incorporated into your grade
+                                        This metric was analyzed and incorporated into your grade
                                     </p>
                                 </div>
                             )}
@@ -1431,7 +1424,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-green-400' : 'text-green-700'
                                     }`}>
-                                        💪 Strengths:
+                                        Strengths:
                                     </h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.strengths.map((strength, idx) => (
@@ -1453,7 +1446,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
                                     <h5 className={`font-semibold mb-2 ${
                                         isDarkMode ? 'text-blue-400' : 'text-blue-700'
                                     }`}>
-                                        🎯 Areas for Improvement:
+                                        Areas for Improvement:
                                     </h5>
                                     <ul className="list-disc list-inside space-y-1">
                                         {submitResult.improvements.map((improvement, idx) => (

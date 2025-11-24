@@ -214,18 +214,18 @@ export default function MatchGameRoom({ matchId, onExit }) {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
         {/* Header with Timer */}
-        <div className="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-bold">Interview Practice</h2>
-              <span className="px-3 py-1 bg-green-600 rounded-full text-sm font-semibold">
+        <div className="bg-gray-800 border-b border-gray-700 p-3 sm:p-4 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <h2 className="text-base sm:text-xl font-bold">Interview Practice</h2>
+              <span className="px-2 sm:px-3 py-1 bg-green-600 rounded-full text-xs sm:text-sm font-semibold">
                 LIVE
               </span>
             </div>
             
             {/* Timer */}
             <div className="text-center">
-              <div className="text-3xl font-mono font-bold tracking-wider">
+              <div className="text-2xl sm:text-3xl font-mono font-bold tracking-wider">
                 {formatTime(roomState.timeRemaining)}
               </div>
               <div className="text-xs text-gray-400 mt-1">Time Remaining</div>
@@ -233,7 +233,7 @@ export default function MatchGameRoom({ matchId, onExit }) {
 
             <button
               onClick={handleExit}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition"
+              className="px-3 sm:px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-xs sm:text-sm font-semibold transition"
             >
               Exit Match
             </button>
@@ -241,13 +241,13 @@ export default function MatchGameRoom({ matchId, onExit }) {
         </div>
 
         {/* Main Content */}
-        <div className="max-w-7xl mx-auto p-6">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6">
           {/* Question Section */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-6 mb-6 shadow-2xl">
-            <h3 className="text-sm font-semibold text-blue-200 mb-2 uppercase tracking-wide">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-2xl">
+            <h3 className="text-xs sm:text-sm font-semibold text-blue-200 mb-2 uppercase tracking-wide">
               Interview Question
             </h3>
-            <p className="text-2xl font-semibold leading-relaxed">
+            <p className="text-lg sm:text-2xl font-semibold leading-relaxed">
               {roomState.question?.question || roomState.question?.text || "Loading question..."}
             </p>
           </div>
@@ -337,7 +337,6 @@ export default function MatchGameRoom({ matchId, onExit }) {
           {/* Tips Section */}
           <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-xl p-4">
             <h4 className="font-semibold text-yellow-300 mb-2 flex items-center">
-              <span className="mr-2">💡</span>
               Tips
             </h4>
             <ul className="text-sm text-gray-300 space-y-1">
