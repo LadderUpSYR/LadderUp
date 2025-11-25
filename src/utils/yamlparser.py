@@ -98,12 +98,13 @@ class Question:
         return self.question
 
 
-def yaml_parser(question: Question, player_uuid: str) -> str:
+def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
     """
     Parses the YAML metadata for a given question and returns it as a formatted string.
 
     Args:
         question (Question): The question object containing metadata.
+        answer (str): The candidate's answer to calculate length.
         player_uuid (str): The unique identifier for the player.
 
     Returns:

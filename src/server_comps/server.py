@@ -563,14 +563,33 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         from src.server_comps.llm_grading import get_grader
         from src.utils.yamlparser import Question
         
+        # Fetch question details from database to get metadata if available
+        question_ref = db.collection("questions").document(str(data.questionId))
+        question_doc = question_ref.get()
+        
         # Create a Question object for the grader
-        question_obj = Question(
-            id=0,  # No ID for practice mode questions
-            question=data.question,
-            answer_criteria=data.answerCriteria,
-            passing_score=0.0,  # No passing score for practice mode
-            metadata_yaml=None  # No YAML metadata for practice mode questions
-        )
+        if question_doc.exists:
+            q_data = question_doc.to_dict()
+            question_obj = Question(
+                id=0,  # ID not used in grading
+                question=data.question,
+                answer_criteria=q_data.get("answerCriteria", data.answerCriteria or ""),
+                passing_score=q_data.get("passingScore", 0.0),
+                avg_score=q_data.get("avgScore", 1.0),
+                num_attempts=q_data.get("numAttempts", 0),
+                metadata_yaml=q_data.get("metadata_yaml", None)
+            )
+        else:
+            # Fallback if question not found in DB
+            question_obj = Question(
+                id=0,  # ID not used in grading
+                question=data.question,
+                answer_criteria=data.answerCriteria or "",
+                passing_score=0.0,
+                avg_score=1.0,
+                num_attempts=0,
+                metadata_yaml=None
+            )
         
         grader = get_grader()
         grading_result = grader.grade_answer(
