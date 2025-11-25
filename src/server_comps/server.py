@@ -558,13 +558,42 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         raise HTTPException(status_code=400, detail="Question and answer are required")
 
     try:
+        # Fetch question details from database to get metadata
+        question_ref = db.collection("questions").document(str(data.questionId))
+        question_doc = question_ref.get()
+        
+        # Create Question object for grading
+        from src.utils.yamlparser import Question
+        if question_doc.exists:
+            q_data = question_doc.to_dict()
+            question_obj = Question(
+                id=int(data.questionId),
+                question=data.question,
+                answer_criteria=q_data.get("answerCriteria", data.answerCriteria or ""),
+                passing_score=q_data.get("passingScore", 70.0),
+                avg_score=q_data.get("avgScore", 1.0),
+                num_attempts=q_data.get("numAttempts", 0),
+                metadata_yaml=q_data.get("metadata_yaml", None)
+            )
+        else:
+            # Fallback if question not found in DB
+            question_obj = Question(
+                id=int(data.questionId),
+                question=data.question,
+                answer_criteria=data.answerCriteria or "",
+                passing_score=70.0,
+                avg_score=1.0,
+                num_attempts=0,
+                metadata_yaml=None
+            )
+        
         # Grade the answer using LLM
         from src.server_comps.llm_grading import get_grader
         grader = get_grader()
         grading_result = grader.grade_answer(
-            question=data.question,
+            question=question_obj,
             answer=data.answer,
-            criteria=data.answerCriteria
+            player_uuid=uid
         )
         
         # Get user's current profile
