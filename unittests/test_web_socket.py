@@ -40,7 +40,7 @@ async def test_ws_invalid_session_token(load_ws_app):
     mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "invalid_token"})
     
     with patch("src.server_comps.websocketserver.websocket", mock_ws), \
-         patch("src.server_comps.server.get_session", AsyncMock(return_value=None)):
+         patch("src.server_comps.websocketserver.get_session", AsyncMock(return_value=None)):
         
         from src.server_comps.websocketserver import join_websocket
         await join_websocket()
@@ -71,13 +71,16 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
         
         # Block forever
         await asyncio.Event().wait()
-        if False:
-            yield
-    
+        
+        # CRITICAL FIX: The presence of 'yield' makes this an async generator,
+        # which is required for the code doing 'async for match in listen_for_match()'
+        yield "ignored"
+
+    # Patch with src. prefix to match your imports
     with patch("src.server_comps.websocketserver.websocket", mock_ws), \
          patch("src.server_comps.websocketserver.get_session", AsyncMock(return_value=session_data)), \
          patch("src.server_comps.websocketserver.listen_for_match", mock_listen), \
-         patch("server_comps.matchmaking.redis_client", mock_redis):
+         patch("src.server_comps.matchmaking.redis_client", mock_redis):
         
         from src.server_comps.websocketserver import join_websocket
         

@@ -19,7 +19,7 @@ function AdminPage() {
 
   const fetchResume = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/profile/resume", {
+      const response = await fetch("/api/profile/resume", {
         credentials: "include",
       });
 
@@ -34,7 +34,7 @@ function AdminPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/admin/users", {
+      const response = await fetch("/api/admin/users", {
         credentials: "include",
       });
       if (!response.ok) {

@@ -1,0 +1,45 @@
+# .dockerignore
+
+# --- Frontend / Node.js (Ignore all of this) ---
+node_modules/
+build/
+dist/
+public/
+coverage/
+.next/
+
+# Ignore specific frontend file types in root or subdirectories
+**/*.js
+**/*.jsx
+**/*.ts
+**/*.tsx
+**/*.css
+**/*.scss
+**/*.html
+**/*.json
+
+# Keep specific JSONs if Python needs them (like service accounts), 
+# otherwise exclude generic config files:
+package.json
+package-lock.json
+yarn.lock
+tsconfig.json
+
+# --- Python / General ---
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+.DS_Store
+
+# --- Docker specific ---
+Dockerfile
+docker-compose.yml
+.dockerignore

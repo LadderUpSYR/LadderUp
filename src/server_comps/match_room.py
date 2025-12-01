@@ -15,17 +15,29 @@ import random
 import numpy as np
 from faster_whisper import WhisperModel
 
-# Initialize Redis client
-redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+import os 
 
+# Initialize Redis client
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 # Lazy initialization for Whisper model
+MODEL_CACHE_DIR = "/app/model_cache"
+
 _whisper_model = None
 
 def get_whisper_model():
     """Lazy initialization of Whisper model for speech-to-text"""
     global _whisper_model
     if _whisper_model is None:
-        _whisper_model = WhisperModel("base", device="cpu")
+        # Tell it to look in the local folder, NOT download from web
+        _whisper_model = WhisperModel(
+            "base", 
+            device="cpu", 
+            download_root=MODEL_CACHE_DIR, # <--- CRITICAL ADDITION
+            local_files_only=True          # <--- Optional: Enforce no downloading
+        )
     return _whisper_model
 
 # Constants
@@ -440,27 +452,19 @@ async def accumulate_transcription(match_id: str, player_uid: str, text: str):
 async def save_match_answers(match_id: str):
     """
     Called when match ends - compile, save, and grade all answers
-    
-    Args:
-        match_id: The match room ID
     """
     print(f"Starting end-of-match grading for match {match_id}")
     
-    # Get room data
     room_data = await get_match_room(match_id)
     if not room_data:
-        print(f"No room data found for match {match_id}")
         return
     
     question_id = room_data.get('question_id')
     if not question_id:
-        print(f"No question ID found for match {match_id}")
         return
     
-    # Import the answer service
     from .answer_to_db_middleware import answer_to_db_middleware
     
-    # Process both players
     players = [room_data['player1_uid'], room_data['player2_uid']]
     grading_results = {}
     
@@ -469,25 +473,19 @@ async def save_match_answers(match_id: str):
         
         # Check if player has any transcriptions
         if key not in player_answers or not player_answers[key]:
-            print(f"No answer found for player {player_uid}")
             grading_results[player_uid] = {
                 "status": "no_answer",
                 "message": "No answer recorded"
             }
             continue
         
-        # Compile the complete answer
+        # Compile answer
         answer_segments = player_answers[key]
         complete_answer = " ".join(answer_segments)
-        
-        # Clean up extra spaces
         complete_answer = " ".join(complete_answer.split())
-        
         word_count = len(complete_answer.split())
-        print(f"Player {player_uid} answer: {word_count} words")
         
         try:
-            # Grade and save the answer
             result = await answer_to_db_middleware(
                 answer=complete_answer,
                 question_id=question_id,
@@ -503,8 +501,6 @@ async def save_match_answers(match_id: str):
                 "word_count": word_count
             }
             
-            print(f"Successfully graded answer for {player_uid}: Score {result['score']}/10")
-            
         except Exception as e:
             print(f"Error grading answer for {player_uid}: {e}")
             grading_results[player_uid] = {
@@ -513,6 +509,12 @@ async def save_match_answers(match_id: str):
                 "word_count": word_count
             }
     
+    # --- NEW: SAVE RESULTS TO REDIS ---
+    # This ensures players who reconnect see the results
+    room_key = f"{ROOM_PREFIX}{match_id}"
+    await redis_client.hset(room_key, "grading_results", json.dumps(grading_results))
+    # ----------------------------------
+
     # Send grading results to all players
     await broadcast_to_room(match_id, {
         "type": "match_graded",
@@ -608,7 +610,7 @@ async def get_room_info(match_id: str):
     """Get information about a match room"""
     from .server import get_session, SESSION_COOKIE_NAME
     
-    # Authenticate user
+    # Authenticate user (Standard Cookie Auth)
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token:
         return jsonify({"error": "Not authenticated"}), 401
@@ -619,14 +621,14 @@ async def get_room_info(match_id: str):
     
     player_uid = session_data["uid"]
     
+    # Verify access
+    if not await verify_player_access(match_id, player_uid):
+        return jsonify({"error": "Access denied"}), 403
+
     # Get room data
     room_data = await get_match_room(match_id)
     if not room_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    # Verify player access
-    if not await verify_player_access(match_id, player_uid):
-        return jsonify({"error": "Access denied"}), 403
+         return jsonify({"error": "Room not found"}), 404
     
     # Determine opponent
     opponent_uid = (room_data['player2_uid'] if player_uid == room_data['player1_uid'] 
@@ -780,34 +782,36 @@ async def mark_player_ready(match_id: str):
 
 @match_room_bp.websocket("/ws/room/<match_id>")
 async def room_websocket(match_id: str):
-    """
-    WebSocket endpoint for real-time communication in a match room
-    Supports:
-    - Audio stream chunks (for STT)
-    - Player status updates
-    - Room events
-    - Timer updates
-    """
     await websocket.accept()
     
-    from .server import get_session, SESSION_COOKIE_NAME
+    from .server import get_session
     
-    # Authenticate user
-    token = websocket.cookies.get(SESSION_COOKIE_NAME)
-    if not token:
-        await websocket.send(json.dumps({"error": "Not authenticated"}))
+    # --- AUTH HANDSHAKE ---
+    player_uid = None
+    try:
+        message = await asyncio.wait_for(websocket.receive(), timeout=5.0)
+        data = json.loads(message)
+
+        if data.get("type") != "authenticate":
+            await websocket.close(code=1008)
+            return
+
+        token = data.get("token")
+        
+        session_data = await get_session(token)
+        if not session_data:
+            await websocket.send(json.dumps({"error": "Invalid session"}))
+            await websocket.close(code=1008)
+            return
+            
+        player_uid = session_data["uid"]
+    
+    except Exception as e:
+        print(f"DEBUG: Room Auth error: {e}")
         await websocket.close(code=1008)
         return
     
-    session_data = await get_session(token)
-    if not session_data:
-        await websocket.send(json.dumps({"error": "Invalid session"}))
-        await websocket.close(code=1008)
-        return
-    
-    player_uid = session_data["uid"]
-    
-    # Verify room access
+    # Verify access
     if not await verify_player_access(match_id, player_uid):
         await websocket.send(json.dumps({"error": "Access denied"}))
         await websocket.close(code=1008)
@@ -818,13 +822,10 @@ async def room_websocket(match_id: str):
         active_connections[match_id] = {}
     active_connections[match_id][player_uid] = websocket._get_current_object()
     
-    # ========== AUTO-READY LOGIC ==========
-    print(f"Auto-readying player {player_uid} in room {match_id}...")
+    # Auto-ready logic
     result = await set_player_ready(match_id, player_uid)
-    print(f"Auto-ready result - Both ready: {result['both_ready']}, Question: {result.get('question')}")
-    # ======================================
     
-    # Notify room of player join
+    # Notify join
     await broadcast_to_room(match_id, {
         "type": "player_joined",
         "player": player_uid
@@ -832,42 +833,55 @@ async def room_websocket(match_id: str):
     
     # Get current room state
     room_data = await get_match_room(match_id)
+    current_status = room_data.get('status') if room_data else 'waiting'
     
     # Build connection message
     connection_message = {
         "type": "connected",
         "match_id": match_id,
         "player_uid": player_uid,
-        "status": room_data.get('status') if room_data else 'waiting',
-        "is_ready": True  # Player is auto-readied
+        "status": current_status,
+        "is_ready": True
     }
-    
-    # ========== CHECK IF BOTH PLAYERS READY ==========
+
+    # --- BUG FIX START ---
+    # Only force "active" if we are NOT already completed
     both_ready = result["both_ready"] and result.get("question")
     
-    # If both players are ready, include question and mark as active
-    if both_ready:
-        print(f"Both players ready! Starting match in room {match_id}")
+    if current_status == "completed":
+        # If completed, try to fetch results from Redis so user sees them
+        if "grading_results" in room_data:
+            connection_message["results"] = json.loads(room_data["grading_results"])
+            # The frontend should handle type: "connected" with status: "completed" 
+            # and render the results passed here (or you can trigger a separate match_graded event)
+            
+            # Allow the frontend to render immediately
+            await websocket.send(json.dumps({
+                "type": "match_graded",
+                "results": json.loads(room_data["grading_results"]),
+                "message": "Match previously completed."
+            }))
+
+    elif both_ready:
+        # Match is starting or ongoing
         connection_message["status"] = "active"
         connection_message["question"] = result["question"]
         connection_message["time_remaining"] = MATCH_DURATION_SECONDS
         connection_message["match_duration_seconds"] = MATCH_DURATION_SECONDS
-    # If only this player is ready, check if question already exists from first player
+    
     elif room_data and room_data.get('question_text'):
+        # Match ongoing but other player waiting
         connection_message["question"] = {
             "id": room_data.get('question_id'),
             "text": room_data.get('question_text')
         }
         connection_message["time_remaining"] = room_data.get('time_remaining')
-    # =================================================
+    # --- BUG FIX END ---
     
-    print(f"Sending connection message: {json.dumps(connection_message, indent=2)}")
     await websocket.send(json.dumps(connection_message))
     
-    # ========== BROADCAST AFTER CONNECTION MESSAGE ==========
-    # Send match start notification to other player AFTER this player's connection is established
-    if both_ready:
-        print(f"Broadcasting match start to other players in room {match_id}...")
+    # Send match start notification ONLY if we are just starting (not reconnecting to completed)
+    if both_ready and current_status != "completed":
         await broadcast_to_room(match_id, {
             "type": "player_ready",
             "player": player_uid,
@@ -875,42 +889,33 @@ async def room_websocket(match_id: str):
             "question": result["question"],
             "match_duration_seconds": MATCH_DURATION_SECONDS
         }, exclude_player=player_uid)
-    # ========================================================
     
     try:
         while True:
             message = await websocket.receive()
-            # Handle different message types
             try:
                 if isinstance(message, bytes):
-                    # Binary data (audio stream chunks for STT)
                     await process_audio_chunk(match_id, player_uid, message)
                 else:
-                    # JSON messages
                     data = json.loads(message)
                     await handle_room_message(match_id, player_uid, data)
             except json.JSONDecodeError:
-                await websocket.send(json.dumps({"error": "Invalid message format"}))
+                pass
             except Exception as e:
                 print(f"Error handling message: {e}")
     
     except asyncio.CancelledError:
-        print(f"Player {player_uid} disconnected from room {match_id}")
+        print(f"Player {player_uid} disconnected")
     finally:
-        # Cleanup connection
         if match_id in active_connections and player_uid in active_connections[match_id]:
             del active_connections[match_id][player_uid]
-            
-            # If room is empty, clean up
             if not active_connections[match_id]:
                 del active_connections[match_id]
         
-        # Clean up audio buffer
         buffer_key = f"{match_id}:{player_uid}"
         if buffer_key in audio_buffers:
             del audio_buffers[buffer_key]
         
-        # Notify room of player departure
         await broadcast_to_room(match_id, {
             "type": "player_left",
             "player": player_uid

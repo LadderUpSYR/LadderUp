@@ -1,46 +1,46 @@
 import { useEffect, useState, useRef } from "react";
 
-export function useMatchmaking(bucket = "bronze") {
+// 1. HARD ROUTE: Put your direct Cloud Run URL here
+// In production, you might want to use process.env.REACT_APP_WS_URL
+const CLOUD_RUN_WS_URL = "wss://websocket-service-929812005686.us-central1.run.app/ws/join";
+
+export function useMatchmaking() {
   const [status, setStatus] = useState("idle");
   const [partners, setPartners] = useState([]);
   const [matchId, setMatchId] = useState(null);
-  const wsRef = useRef(null); // store WebSocket across renders
-  const isConnectingRef = useRef(false); // prevent double connections
+  const wsRef = useRef(null);
+  const isConnectingRef = useRef(false);
 
-  // Join matchmaking queue
   const joinQueue = async () => {
-    if (wsRef.current || isConnectingRef.current) return; // already connected or connecting
+    if (wsRef.current || isConnectingRef.current) return;
 
     isConnectingRef.current = true;
     setStatus("checking_session");
 
+    // 2. GET TOKEN: Retrieve the token we saved during Login
+    const token = localStorage.getItem("ws_token");
+
+    if (!token) {
+      console.error("No auth token found in storage");
+      setStatus("no_logged_session_found");
+      isConnectingRef.current = false;
+      return;
+    }
+
     try {
-      const res = await fetch("http://localhost:8000/api/auth/me", {
-        credentials: "include", // send httponly cookie
-      });
-
-      if (!res.ok) {
-        setStatus("no_logged_session_found");
-        isConnectingRef.current = false;
-        return;
-      }
-
-      const { user } = await res.json();
-      console.log("Authenticated user:", user);
-      if (!user) {
-        setStatus("no_logged_session_found");
-        isConnectingRef.current = false;
-        return;
-      }
-
-      // Open WebSocket (cookie sent automatically)
-      const socket = new WebSocket(`ws://localhost:5001/ws/join`);
+      // 3. DIRECT CONNECTION: Bypass Firebase Hosting completely
+      console.log("Connecting to:", CLOUD_RUN_WS_URL);
+      const socket = new WebSocket(CLOUD_RUN_WS_URL);
       wsRef.current = socket;
 
       socket.onopen = () => {
-        console.log("WebSocket connected");
-        setStatus("connected");
-        isConnectingRef.current = false;
+        console.log("WebSocket connected, sending auth...");
+        
+        // 4. AUTH HANDSHAKE: Send token immediately
+        socket.send(JSON.stringify({
+          type: "authenticate",
+          token: token
+        }));
       };
 
       socket.onmessage = (event) => {
@@ -48,16 +48,20 @@ export function useMatchmaking(bucket = "bronze") {
         console.log("Received WS message:", data);
 
         if (data.error) {
-          console.error("WebSocket error from server:", data.error);
+          console.error("Server error:", data.error);
           setStatus("error");
-          alert(`Matchmaking error: ${data.error}`);
-        } else if (data.status === "queued") {
+          socket.close(); // Close if auth fails
+        } 
+        else if (data.status === "queued") {
+          // This confirms the server accepted our auth token
           setStatus("queued");
-        } else if (data.status === "match_found") {
+          isConnectingRef.current = false;
+        } 
+        else if (data.status === "match_found") {
           setStatus("match_found");
           setPartners(data.partner ? [data.partner] : data.partners || []);
           setMatchId(data.match_id);
-          // Redirect to match room after short delay
+          
           setTimeout(() => {
             goToRoom(data.match_id);
           }, 1000);
@@ -65,8 +69,7 @@ export function useMatchmaking(bucket = "bronze") {
       };
 
       socket.onclose = (event) => {
-        console.log("WebSocket disconnected", event);
-        console.log("Close code:", event.code, "Reason:", event.reason);
+        console.log("WebSocket disconnected", event.code, event.reason);
         setStatus((prev) => (prev === "match_found" ? prev : "disconnected"));
         wsRef.current = null;
         isConnectingRef.current = false;
@@ -77,17 +80,17 @@ export function useMatchmaking(bucket = "bronze") {
         setStatus("error");
         isConnectingRef.current = false;
       };
+
     } catch (err) {
-      console.error("Error checking session:", err);
+      console.error("Connection failed:", err);
       setStatus("error");
       isConnectingRef.current = false;
     }
   };
 
-  // Leave matchmaking queue
   const leaveQueue = () => {
     if (wsRef.current) {
-      wsRef.current.close(1000); // normal closure
+      wsRef.current.close(1000);
       wsRef.current = null;
       setStatus("idle");
       setPartners([]);
@@ -96,16 +99,10 @@ export function useMatchmaking(bucket = "bronze") {
 
   const goToRoom = (id) => {
     if (id) {
-      try {
-        // Redirect user to the match room using the frontend route
-        window.location.pathname = `/match/${id}`;
-      } catch (err) {
-        console.error("Error redirecting to match room:", err);
-      }
+      window.location.pathname = `/match/${id}`;
     }
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => leaveQueue();
   }, []);

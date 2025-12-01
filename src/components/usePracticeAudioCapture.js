@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { getWebSocketURL } from '../utils/websocketUrl';
 
 /**
  * Custom hook for capturing audio in practice mode using Whisper STT via WebSocket
@@ -49,7 +50,7 @@ export function usePracticeAudioCapture() {
     return new Promise((resolve, reject) => {
       try {
         // Connect to practice mode WebSocket endpoint
-        const ws = new WebSocket('ws://localhost:8000/ws/practice');
+        const ws = new WebSocket(getWebSocketURL('/ws/practice', 8000));
         
         ws.onopen = () => {
           console.log('Practice mode WebSocket connected');

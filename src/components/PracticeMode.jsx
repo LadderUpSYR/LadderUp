@@ -3,8 +3,6 @@ import { useDarkMode } from "../utils/useDarkMode";
 import { usePracticeAudioCapture } from "./usePracticeAudioCapture";
 import "../App.css";
 
-const API_BASE = "http://localhost:8000";
-
 /**
  * PracticeMode Component
  * A practice mode interface with two options:
@@ -257,7 +255,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
 
     const getRandomQuestion = async () => {
         try {
-            const result = await fetch(`${API_BASE}/api/question/random`, {
+            const result = await fetch(`/api/question/random`, {
                 method: "GET",
                 credentials: "include",
             });
@@ -292,7 +290,7 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
         setError("");
 
         try {
-            const result = await fetch(`${API_BASE}/api/question/submit`, {
+            const result = await fetch(`/api/question/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -732,7 +730,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
 
     const getRandomQuestion = async () => {
         try {
-            const result = await fetch(`${API_BASE}/api/question/random`, {
+            const result = await fetch(`/api/question/random`, {
                 method: "GET",
                 credentials: "include",
             });
@@ -769,7 +767,7 @@ function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
         setError("");
 
         try {
-            const result = await fetch(`${API_BASE}/api/question/submit`, {
+            const result = await fetch(`/api/question/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",

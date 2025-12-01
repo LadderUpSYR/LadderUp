@@ -2,17 +2,22 @@
  * Authentication utilities for OAuth and email/password login
  */
 
-const API_BASE = "http://localhost:8000";
-
 /**
  * Handle OAuth login (currently supports Google)
  * @param {string} provider - The OAuth provider (e.g., 'google')
  * @param {string} token - The OAuth token/credential
  * @returns {Promise<{user: object}>} The user data
  */
+
+const saveToken = (token) => {
+  if (token) {
+    localStorage.setItem("ws_token", token);
+  }
+};
+
 export const handleOAuthLogin = async (provider, token, recaptchaToken) => {
   if (provider === "google" && token) {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
+    const res = await fetch(`/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -25,6 +30,7 @@ export const handleOAuthLogin = async (provider, token, recaptchaToken) => {
     }
     
     const data = await res.json();
+    saveToken(data.token);
     console.log("Signed in:", data.user);
     return data;
   }
@@ -43,7 +49,7 @@ export const handleOAuthLogin = async (provider, token, recaptchaToken) => {
 export const handleEmailLogin = async ({ email, password, remember, recaptchaToken }) => {
   console.log("login:", { email, password, remember });
   
-  const res = await fetch(`${API_BASE}/api/auth/login-email`, {
+  const res = await fetch(`/api/auth/login-email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -56,6 +62,7 @@ export const handleEmailLogin = async ({ email, password, remember, recaptchaTok
   }
   
   const data = await res.json();
+  saveToken(data.token);
   console.log("Logged in:", data.user);
   return data;
 };
@@ -71,7 +78,7 @@ export const handleEmailLogin = async ({ email, password, remember, recaptchaTok
 export const handleSignup = async ({ email, password, name, recaptchaToken }) => {
   console.log("signup:", { email, password, name });
   
-  const res = await fetch(`${API_BASE}/api/auth/signup`, {
+  const res = await fetch(`/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -84,6 +91,7 @@ export const handleSignup = async ({ email, password, name, recaptchaToken }) =>
   }
   
   const data = await res.json();
+  saveToken(data.token);
   console.log("Signed up:", data.user);
   return data;
 };
@@ -93,7 +101,8 @@ export const handleSignup = async ({ email, password, name, recaptchaToken }) =>
  * @returns {Promise<void>}
  */
 export const handleLogout = async () => {
-  const res = await fetch(`${API_BASE}/api/auth/logout`, {
+  localStorage.removeItem("ws_token");
+  const res = await fetch(`/api/auth/logout`, {
     method: "POST",
     credentials: "include",
   });
@@ -112,7 +121,7 @@ export const handleLogout = async () => {
  */
 export const checkAuthStatus = async () => {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/me`, {
+    const res = await fetch(`/api/auth/me`, {
       credentials: "include",
     });
     

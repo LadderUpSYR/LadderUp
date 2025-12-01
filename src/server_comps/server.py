@@ -26,9 +26,13 @@ load_dotenv()
 RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")
 
 # Connect to Redis
-redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 SESSION_PREFIX = "session:"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
+print("Using REDIS_HOST:", REDIS_HOST, "REDIS_PORT:", REDIS_PORT)
 
 # Fallback in-memory session store if Redis is unavailable
 memory_sessions: Dict[str, Dict[str, str]] = {}
@@ -114,26 +118,19 @@ async def delete_session(session_token: str) -> None:
 
 # Load environment variables
 load_dotenv()
+
+
+# ADD THIS IN ITS PLACE
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-SERVICE_ACCOUNT_KEY = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
+SESSION_COOKIE_NAME = "__session"
 
-SESSION_COOKIE_NAME = "session_token" # needed?
-
-# Initialize Firebase Admin
-if not SERVICE_ACCOUNT_KEY:
-    raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_KEY is not set")
-
-try:
-    if SERVICE_ACCOUNT_KEY.strip().startswith("{"):
-        cred = credentials.Certificate(json.loads(SERVICE_ACCOUNT_KEY))
-    else:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_KEY)
-except Exception as e:
-    raise RuntimeError(f"Invalid FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
+cred = credentials.ApplicationDefault() 
 
 firebase_admin.initialize_app(cred, {
-    'storageBucket': 'ladderup-5e25d.firebasestorage.app'
+    'storageBucket': 'ladderup-5e25d.firebasestorage.app',
+    'projectId': 'ladderup-5e25d',
 })
+
 db = firestore.client()
 bucket = storage.bucket()
 
@@ -142,7 +139,8 @@ app = FastAPI()
 # Allow React dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://localhost:8000","http://localhost:5000","http://localhost:5001"],
+    allow_origins=["http://localhost:3000","http://localhost:8000","http://localhost:5000","http://localhost:5001","https://ladderup-5e25d.web.app",
+"https://ladderup-5e25d.firebaseapp.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -233,13 +231,14 @@ async def login(data: dict):
                 "email": email,
                 "is_admin": is_admin
             },
+            "token": session_token,
             "msg": "User Exists" if userExisted else "New user created"
         })
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
+            secure=True,  # True in production
             samesite="lax",
             max_age=SESSION_TTL_SECONDS
         )
@@ -332,7 +331,7 @@ async def signup(data: SignupRequest):
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
+            secure=True,  # True in production
             samesite="lax",
             max_age=SESSION_TTL_SECONDS
         )
@@ -406,13 +405,14 @@ async def login_email(data: LoginEmailRequest):
                 "email": email,
                 "is_admin": is_admin
             },
+            "token": session_token,
             "msg": "Login successful"
         })
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_token,
             httponly=True,
-            secure=False,  # True in production
+            secure=True,  # True in production
             samesite="lax",
             max_age=SESSION_TTL_SECONDS
         )
@@ -935,3 +935,24 @@ async def get_queue_status():
             "estimated_wait_seconds": 10,
             "estimated_wait_text": "10s"
         }
+
+@app.get("/debug/redis")
+async def debug_redis():
+    try:
+        pong = await redis_client.ping()
+        return {"ok": True, "message": pong}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/debug/cookies")
+async def debug_cookies(request: Request):
+    """
+    Echoes back all cookies received by the server.
+    Useful for checking if Firebase Hosting is stripping them.
+    """
+    print(f"DEBUG: Received cookies: {request.cookies}")
+    return {
+        "cookies_received": request.cookies,
+        "cookie_count": len(request.cookies),
+        "headers": dict(request.headers)  # Inspect headers to see if Via/Forwarded-For are set
+    }
