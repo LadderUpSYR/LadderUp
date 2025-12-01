@@ -146,14 +146,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Practice Mode STT WebSocket 
-# Import the practice STT handler from separate module
-from .practice_stt_fastapi import practice_stt_websocket_handler
-
-@app.websocket("/ws/practice")
-async def practice_stt_websocket(websocket: WebSocket):
-    """WebSocket endpoint for practice mode speech-to-text"""
-    await practice_stt_websocket_handler(websocket)
+# Note: Practice Mode STT WebSocket is now handled by a separate service
+# (practice_websocket_server.py) to bypass Firebase CDN WebSocket limitations.
+# Run it with: hypercorn src.server_comps.practice_websocket_server:app --bind 0.0.0.0:8001
 
 @app.get("/health")
 def health():
