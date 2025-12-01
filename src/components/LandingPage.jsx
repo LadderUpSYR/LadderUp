@@ -36,34 +36,6 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
     <div className={`min-h-screen relative overflow-hidden transition-colors duration-500 ${
       isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      {/* Animated background particles */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        {[...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className={`absolute w-1 h-1 rounded-full opacity-20 animate-float ${
-              isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
-            }`}
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${5 + Math.random() * 10}s`
-            }}
-          />
-        ))}
-      </div>
-      
-      {/* Mouse follower glow */}
-      <div
-        className={`fixed w-96 h-96 rounded-full blur-3xl pointer-events-none transition-all duration-300 ease-out ${
-          isDarkMode ? 'bg-sky-blue/10' : 'bg-sky-500/10'
-        }`}
-        style={{
-          left: mousePosition.x - 192,
-          top: mousePosition.y - 192,
-        }}
-      />
       {/* Navigation */}
       <nav className={`shadow-lg border-b transition-colors duration-500 ${
         isDarkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-200'
@@ -71,11 +43,11 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className={`text-2xl font-bold transition-colors duration-500 ${
+              <h1 className={`text-xl sm:text-2xl font-bold transition-colors duration-500 ${
                 isDarkMode ? 'text-sky-blue' : 'text-sky-600'
               }`}>LadderUp</h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Theme Toggle Button */}
               <button
                 onClick={toggleDarkMode}
@@ -108,7 +80,7 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
               </button>
               <button
                 onClick={onSignIn}
-                className={`px-6 py-2 transition-colors duration-200 ${
+                className={`px-3 sm:px-6 py-2 text-sm sm:text-base transition-colors duration-200 ${
                   isDarkMode 
                     ? 'text-gray-300 hover:text-sky-blue' 
                     : 'text-gray-700 hover:text-sky-600'
@@ -118,7 +90,7 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
               </button>
               <button
                 onClick={onSignUp}
-                className={`px-6 py-2 font-semibold rounded-lg transition-all duration-200 shadow-lg ${
+                className={`px-3 sm:px-6 py-2 text-sm sm:text-base font-semibold rounded-lg transition-all duration-200 shadow-lg ${
                   isDarkMode
                     ? 'bg-sky-blue text-black hover:bg-sky-400 shadow-sky-blue/50'
                     : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/30'
@@ -160,15 +132,15 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
             }`}>
               <span className={`text-sm font-semibold transition-colors duration-500 ${
                 isDarkMode ? 'text-sky-blue' : 'text-sky-700'
-              }`}>🚀 AI-Powered Interview Mastery</span>
+              }`}>AI-Powered Interview Mastery</span>
             </div>
-            <h1 className={`text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight animate-fade-in-up transition-colors duration-500 ${
+            <h1 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight animate-fade-in-up transition-colors duration-500 px-4 ${
               isDarkMode ? 'text-white' : 'text-gray-900'
             }`}>
               Master Your Interviews with
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-blue via-blue-400 to-purple-400 animate-gradient bg-300%"> AI-Powered Preparation</span>
             </h1>
-            <p className={`text-xl md:text-2xl mb-8 max-w-3xl mx-auto leading-relaxed animate-fade-in-up transition-colors duration-500 ${
+            <p className={`text-lg sm:text-xl md:text-2xl mb-8 max-w-3xl mx-auto leading-relaxed animate-fade-in-up transition-colors duration-500 px-4 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`} style={{ animationDelay: '0.2s' }}>
               Get real-time AI feedback on your interview responses. Practice smarter, 
@@ -176,34 +148,34 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
             </p>
             
             {/* Stats Counter */}
-            <div className="flex flex-wrap justify-center gap-8 mb-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mb-12 animate-fade-in-up px-4" style={{ animationDelay: '0.4s' }}>
               <div className="text-center">
-                <div className={`text-4xl font-bold mb-1 transition-colors duration-500 ${
+                <div className={`text-3xl sm:text-4xl font-bold mb-1 transition-colors duration-500 ${
                   isDarkMode ? 'text-sky-blue' : 'text-sky-600'
                 }`}>10K+</div>
-                <div className={`text-sm transition-colors duration-500 ${
+                <div className={`text-xs sm:text-sm transition-colors duration-500 ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}>Practice Sessions</div>
               </div>
               <div className="text-center">
-                <div className={`text-4xl font-bold mb-1 transition-colors duration-500 ${
+                <div className={`text-3xl sm:text-4xl font-bold mb-1 transition-colors duration-500 ${
                   isDarkMode ? 'text-sky-blue' : 'text-sky-600'
                 }`}>95%</div>
-                <div className={`text-sm transition-colors duration-500 ${
+                <div className={`text-xs sm:text-sm transition-colors duration-500 ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}>Success Rate</div>
               </div>
               <div className="text-center">
-                <div className={`text-4xl font-bold mb-1 transition-colors duration-500 ${
+                <div className={`text-3xl sm:text-4xl font-bold mb-1 transition-colors duration-500 ${
                   isDarkMode ? 'text-sky-blue' : 'text-sky-600'
                 }`}>500+</div>
-                <div className={`text-sm transition-colors duration-500 ${
+                <div className={`text-xs sm:text-sm transition-colors duration-500 ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}>Happy Users</div>
               </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row justify-center gap-4 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
+            <div className="flex flex-col sm:flex-row justify-center gap-4 animate-fade-in-up px-4" style={{ animationDelay: '0.6s' }}>
               <button
                 onClick={onSignUp}
                 className={`group px-8 py-4 bg-gradient-to-r from-sky-blue to-blue-400 text-lg font-semibold rounded-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden ${
@@ -601,21 +573,21 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
           }`}>
             <span className={`text-sm font-semibold transition-colors duration-500 ${
               isDarkMode ? 'text-sky-blue' : 'text-sky-700'
-            }`}>✨ Limited Time Offer</span>
+            }`}>Limited Time Offer</span>
           </div>
-          <h2 className={`text-4xl md:text-5xl font-bold mb-6 transition-colors duration-500 ${
+          <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bold mb-6 transition-colors duration-500 px-4 ${
             isDarkMode ? 'text-white' : 'text-gray-900'
           }`}>
             Ready to Transform Your Interview Game?
           </h2>
-          <p className={`text-xl mb-8 transition-colors duration-500 ${
+          <p className={`text-lg sm:text-xl mb-8 transition-colors duration-500 px-4 ${
             isDarkMode ? 'text-gray-300' : 'text-gray-700'
           }`}>
             Join thousands of successful job seekers. Start practicing with AI today.
           </p>
           <button
             onClick={onSignUp}
-            className={`group px-10 py-4 bg-gradient-to-r from-sky-blue to-blue-400 text-lg font-semibold rounded-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden ${
+            className={`group px-8 sm:px-10 py-4 bg-gradient-to-r from-sky-blue to-blue-400 text-base sm:text-lg font-semibold rounded-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden mx-4 ${
               isDarkMode 
                 ? 'text-black hover:shadow-sky-blue/50' 
                 : 'text-white hover:shadow-sky-600/40'
@@ -629,12 +601,12 @@ const LandingPage = ({ onSignIn, onSignUp }) => {
               </svg>
             </span>
           </button>
-          <p className={`mt-4 text-sm transition-colors duration-500 ${
+          <p className={`mt-4 text-xs sm:text-sm transition-colors duration-500 px-4 ${
             isDarkMode ? 'text-gray-500' : 'text-gray-600'
           }`}>No credit card required • Free forever plan available • 5-minute setup</p>
           
           {/* Trust badges */}
-          <div className="flex flex-wrap justify-center gap-6 mt-12 items-center">
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-6 mt-12 items-center px-4">
             <div className={`flex items-center gap-2 transition-colors duration-500 ${
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
             }`}>

@@ -256,26 +256,9 @@ function Profile({ user }) {
   };
 
   return (
-    <div className={`min-h-screen w-full relative overflow-hidden transition-colors duration-500 ${
+    <div className={`min-h-screen w-full relative transition-colors duration-500 ${
       isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
-      {/* Animated background particles */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        {[...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className={`absolute w-1 h-1 rounded-full opacity-20 animate-float ${
-              isDarkMode ? 'bg-sky-blue' : 'bg-sky-600'
-            }`}
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${5 + Math.random() * 10}s`
-            }}
-          />
-        ))}
-      </div>
 
       {/* Navigation */}
       <nav className={`shadow-lg border-b transition-colors duration-500 ${
@@ -283,7 +266,7 @@ function Profile({ user }) {
       }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <h1 className={`text-2xl font-bold transition-colors duration-500 ${
+            <h1 className={`text-xl sm:text-2xl font-bold transition-colors duration-500 ${
               isDarkMode ? 'text-sky-blue' : 'text-sky-600'
             }`}>LadderUp Profile</h1>
             <button
@@ -302,8 +285,16 @@ function Profile({ user }) {
                     : 'translate-x-1 bg-white'
                 }`}
               >
-                <span className="flex items-center justify-center h-full text-xs">
-                  {isDarkMode ? '🌙' : '☀️'}
+                <span className="flex items-center justify-center h-full">
+                  {isDarkMode ? (
+                    <svg className="w-4 h-4 text-sky-blue" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                    </svg>
+                  )}
                 </span>
               </span>
             </button>
@@ -312,14 +303,14 @@ function Profile({ user }) {
       </nav>
 
       {/* Main Content */}
-      <div className="relative z-10 flex max-w-7xl mx-auto p-6 gap-6">
+      <div className="relative z-10 flex flex-col lg:flex-row max-w-7xl mx-auto p-4 sm:p-6 gap-4 sm:gap-6">
         {/* Left Panel - User Stats */}
-        <div className={`flex-1 rounded-xl shadow-2xl border p-6 transition-colors duration-500 ${
+        <div className={`flex-1 rounded-xl shadow-2xl border p-4 sm:p-6 transition-colors duration-500 ${
           isDarkMode 
             ? 'bg-gradient-to-br from-gray-800 to-black border-gray-700' 
             : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'
         }`}>
-          <h2 className={`text-2xl font-bold mb-6 transition-colors duration-500 ${
+          <h2 className={`text-xl sm:text-2xl font-bold mb-6 transition-colors duration-500 ${
             isDarkMode ? 'text-white' : 'text-gray-900'
           }`}>User Stats</h2>
 
@@ -367,16 +358,16 @@ function Profile({ user }) {
                   isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
                 }`}>
                   <tr>
-                    <th className={`px-6 py-3 border-b font-semibold transition-colors duration-500 ${
+                    <th className={`px-2 sm:px-4 py-3 border-b font-semibold text-xs sm:text-sm transition-colors duration-500 ${
                       isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
                     }`}>Date</th>
-                    <th className={`px-8 py-3 border-b font-semibold transition-colors duration-500 ${
+                    <th className={`px-2 sm:px-4 py-3 border-b font-semibold text-xs sm:text-sm transition-colors duration-500 ${
                       isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
                     }`}>Question</th>
-                    <th className={`px-4 py-3 border-b font-semibold transition-colors duration-500 ${
+                    <th className={`hidden md:table-cell px-2 sm:px-4 py-3 border-b font-semibold text-xs sm:text-sm transition-colors duration-500 ${
                       isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
                     }`}>Answer</th>
-                    <th className={`px-4 py-3 border-b font-semibold transition-colors duration-500 ${
+                    <th className={`px-2 sm:px-4 py-3 border-b font-semibold text-xs sm:text-sm transition-colors duration-500 ${
                       isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'
                     }`}>Score</th>
                   </tr>
@@ -384,7 +375,7 @@ function Profile({ user }) {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td className={`px-4 py-3 border-b transition-colors duration-500 ${
+                      <td className={`px-2 sm:px-4 py-3 border-b transition-colors duration-500 ${
                         isDarkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'
                       }`} colSpan={4}>
                         Loading...
@@ -395,22 +386,22 @@ function Profile({ user }) {
                       <tr key={idx} className={`transition-colors duration-300 ${
                         isDarkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
                       }`}>
-                        <td className={`px-4 py-3 border-b text-sm transition-colors duration-500 ${
+                        <td className={`px-2 sm:px-4 py-3 border-b text-xs sm:text-sm transition-colors duration-500 ${
                           isDarkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-700'
                         }`}>
                           {new Date(q.date).toLocaleDateString()}
                         </td>
-                        <td className={`px-4 py-3 border-b text-sm transition-colors duration-500 ${
+                        <td className={`px-2 sm:px-4 py-3 border-b text-xs sm:text-sm max-w-[150px] sm:max-w-xs truncate transition-colors duration-500 ${
                           isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-900'
                         }`}>
                           {q.question}
                         </td>
-                        <td className={`px-4 py-3 border-b text-sm max-w-md truncate transition-colors duration-500 ${
+                        <td className={`hidden md:table-cell px-2 sm:px-4 py-3 border-b text-xs sm:text-sm max-w-xs truncate transition-colors duration-500 ${
                           isDarkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-700'
                         }`}>
                           {q.answer}
                         </td>
-                        <td className={`px-4 py-3 border-b text-sm font-bold transition-colors duration-500 ${
+                        <td className={`px-2 sm:px-4 py-3 border-b text-xs sm:text-sm font-bold transition-colors duration-500 ${
                           isDarkMode ? 'border-gray-700 text-sky-blue' : 'border-gray-200 text-sky-600'
                         }`}>
                           {q.score}/10
@@ -419,7 +410,7 @@ function Profile({ user }) {
                     ))
                   ) : (
                     <tr>
-                      <td className={`px-4 py-3 border-b transition-colors duration-500 ${
+                      <td className={`px-2 sm:px-4 py-3 border-b transition-colors duration-500 ${
                         isDarkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'
                       }`} colSpan={4}>
                         (no previous answers)
@@ -433,12 +424,12 @@ function Profile({ user }) {
         </div>
 
         {/* Right Panel - User Settings */}
-        <div className={`w-96 rounded-xl shadow-2xl border p-6 transition-colors duration-500 ${
+        <div className={`w-full lg:w-96 rounded-xl shadow-2xl border p-4 sm:p-6 transition-colors duration-500 ${
           isDarkMode 
             ? 'bg-gradient-to-br from-gray-800 to-black border-gray-700' 
             : 'bg-gradient-to-br from-white to-gray-50 border-gray-200'
         }`}>
-          <h2 className={`text-xl font-bold mb-6 transition-colors duration-500 ${
+          <h2 className={`text-lg sm:text-xl font-bold mb-6 transition-colors duration-500 ${
             isDarkMode ? 'text-white' : 'text-gray-900'
           }`}>User Settings</h2>
           
@@ -520,7 +511,7 @@ function Profile({ user }) {
                 
                 {resumeUrl && !resumeFile && (
                   <div className="mt-3">
-                    <p className="text-sm text-green-600 mb-2 font-semibold">✓ Current resume: resume.pdf</p>
+                    <p className="text-sm text-green-600 mb-2 font-semibold">Current resume: resume.pdf</p>
                     <a
                       href={resumeUrl}
                       target="_blank"
@@ -552,18 +543,7 @@ function Profile({ user }) {
                   : 'bg-gradient-to-r from-purple-600 to-pink-500 text-white hover:shadow-purple-600/40'
               }`}
             >
-              📚 Practice Mode
-            </button>
-
-            <button
-              onClick={() => navigate('/face-tracking')}
-              className={`w-full px-4 py-3 font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg ${
-                isDarkMode
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-400 text-black hover:shadow-green-500/50'
-                  : 'bg-gradient-to-r from-green-600 to-emerald-500 text-white hover:shadow-green-600/40'
-              }`}
-            >
-              🎭 Face Tracking Demo
+              Practice Mode
             </button>
 
             <button
