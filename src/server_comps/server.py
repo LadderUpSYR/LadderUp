@@ -540,6 +540,8 @@ class SubmitAnswerRequest(BaseModel):
     answer: str
     answerCriteria: Optional[str] = None
 
+from src.server_comps.answer_to_db_middleware import answer_to_db_middleware
+
 @app.post("/api/question/submit")
 async def submit_answer(request: Request, data: SubmitAnswerRequest):
     """Submit an answer to a question and record it in the user's profile with LLM grading"""
@@ -554,65 +556,46 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
     uid = session_data["uid"]
 
     # Validate inputs
-    if not data.question or not data.answer:
-        raise HTTPException(status_code=400, detail="Question and answer are required")
+    if not data.questionId or not data.answer:
+        raise HTTPException(status_code=400, detail="Question ID and answer are required")
 
     try:
-        # Grade the answer using LLM
-        from src.server_comps.llm_grading import get_grader
-        grader = get_grader()
-        grading_result = grader.grade_answer(
-            question=data.question,
+        # 1. Use the middleware to handle Grading + Database Saving
+        # This replaces the manual grader initialization and DB update logic
+        answer_record = await answer_to_db_middleware(
             answer=data.answer,
-            criteria=data.answerCriteria
+            question_id=data.questionId,
+            player_uuid=uid
         )
-        
-        # Get user's current profile
+
+        # 2. Fetch User Data for 'total_answered' count
+        # (The middleware returns the specific answer, but your frontend expects the total count)
         user_ref = db.collection("users").document(uid)
         user_doc = user_ref.get()
+        total_answered = 0
         
-        if not user_doc.exists:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_data = user_doc.to_dict()
-        answered_questions = user_data.get("answered_questions", [])
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            answered_questions = user_data.get("answered_questions", [])
+            total_answered = len(answered_questions)
 
-        # Create new answer record with LLM grading
-        answer_record = {
-            "questionId": data.questionId,
-            "question": data.question,
-            "answer": data.answer,
-            "score": grading_result["score"],
-            "feedback": grading_result["feedback"],
-            "strengths": grading_result["strengths"],
-            "improvements": grading_result["improvements"],
-            "date": datetime.now(timezone.utc).isoformat(),
-            "gradedBy": "gemini-ai"
-        }
-
-        # Check if question was already answered - update with latest score
-        existing_index = None
-        for i, q in enumerate(answered_questions):
-            if q.get("questionId") == data.questionId:
-                existing_index = i
-                break
-        
-        if existing_index is not None:
-            # Update existing answer with new score (keeping history of most recent attempt)
-            answered_questions[existing_index] = answer_record
-        else:
-            # Add new answer
-            answered_questions.append(answer_record)
-
-        # Update user profile
-        user_ref.update({"answered_questions": answered_questions})
-
+        # 3. Return response matching the original API contract
         return {
             "msg": "Answer submitted and graded successfully",
             "answer_record": answer_record,
-            "total_answered": len(answered_questions),
-            "grading": grading_result
+            "total_answered": total_answered,
+            # Reconstruct the 'grading' object for frontend compatibility
+            "grading": {
+                "score": answer_record.get("score"),
+                "feedback": answer_record.get("feedback"),
+                "strengths": answer_record.get("strengths"),
+                "improvements": answer_record.get("improvements")
+            }
         }
+
+    except ValueError as ve:
+        # Handle cases where middleware raises ValueError (e.g. Question not found)
+        raise HTTPException(status_code=404, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:

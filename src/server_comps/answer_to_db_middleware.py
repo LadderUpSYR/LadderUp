@@ -69,7 +69,7 @@ async def answer_to_db_middleware(
     # Create answer record
     answer_record = {
         "questionId": question.id,
-        "question": question.text,
+        "question": question.question,
         "answer": answer,
         "score": grading_result["score"],
         "feedback": grading_result["feedback"],
