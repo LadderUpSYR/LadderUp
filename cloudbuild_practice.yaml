@@ -1,0 +1,7 @@
+steps:
+  # Docker Build
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'build', '-t', 'gcr.io/ladderup-5e25d/practice-service', '-f', 'Dockerfile.practice', '.' ]
+
+images:
+  - 'gcr.io/ladderup-5e25d/practice-service'
