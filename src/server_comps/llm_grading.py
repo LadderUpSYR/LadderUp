@@ -19,7 +19,8 @@ if GEMINI_API_KEY:
 class InterviewGrader:
     """Grades interview answers using Google Gemini AI"""
     
-    # Security constants
+    # Patterns commonly used in prompt injection attacks
+    # These are logged for monitoring but not blocked, as the prompt itself handles them safely
     MAX_INPUT_LENGTH = 10000  # Maximum characters for question/answer
     SUSPICIOUS_PATTERNS = [
         "ignore previous instructions",
@@ -51,7 +52,7 @@ class InterviewGrader:
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        # Initialize the model
+        # Initialize the model - this creates a connection to Gemini's API
         self.model = genai.GenerativeModel(model_name)
     
     def _validate_input(self, text: str, field_name: str) -> str:
@@ -75,6 +76,7 @@ class InterviewGrader:
         if len(text) > self.MAX_INPUT_LENGTH:
             raise ValueError(f"{field_name} exceeds maximum length of {self.MAX_INPUT_LENGTH} characters")
         
+        # Security monitoring: detect suspicious patterns without blocking
         # Note: We don't block suspicious patterns, but we log them for monitoring
         # The LLM prompt itself is designed to handle these safely
         text_lower = text.lower()
@@ -100,6 +102,7 @@ class InterviewGrader:
         feedback = result.get("feedback", "").lower()
         
         # If the LLM appears to have leaked system instructions, replace with safe default
+        # These patterns indicate the model might be revealing its internal prompt
         suspicious_output_patterns = [
             "critical security instructions",
             "system instructions",
@@ -152,12 +155,14 @@ class InterviewGrader:
         # TODO: criteria = yaml_parser(question, "player_uuid_placeholder") # replace with actual player UUID
         
         try:
-            # Validate all inputs
+            # Step 1: Validate all inputs to prevent injection and ensure quality
             question_text = self._validate_input(question.text, "Question")
             answer = self._validate_input(answer, "Answer")
 
+            # Step 2: Get base criteria from the question object
             criteria = question.answer_criteria if question.answer_criteria else None
 
+            # Step 3: If we have YAML metadata and a player UUID, get personalized criteria
             if question.metadata_yaml and player_uuid:
                 yaml_criteria = yaml_parser(question, answer, player_uuid)
 
@@ -166,18 +171,19 @@ class InterviewGrader:
                 else:
                     criteria = yaml_criteria
             
+            # Step 4: Build the secure grading prompt
             prompt = self._build_grading_prompt(question_text, answer, criteria, video_analytics)
             
-            # Generate response from Gemini
+            # Step 5: Generate response from Gemini API
             response = self.model.generate_content(prompt)
             
-            # Parse the response
+            # Step 6: Parse the response
             result = self._parse_gemini_response(response.text)
             
-            # Sanitize output to prevent prompt leakage
+            # Step 7: Sanitize output to prevent prompt leakage
             result = self._sanitize_output(result)
             
-            # Include video analytics in the result if provided
+            # Step 8: Include video analytics in the result if provided
             if video_analytics:
                 result["videoMetrics"] = video_analytics
             
