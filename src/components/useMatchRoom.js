@@ -159,6 +159,13 @@ export function useMatchRoom(matchId) {
             });
             break;
 
+          case "facial_tracking":
+            // Handle incoming facial tracking data from opponent
+            // Note: This is handled separately in MatchGameRoom via useMatchVideoCapture
+            // We just need to ensure the message is available for processing
+            console.log(`Facial tracking from ${data.player}:`, data.attention?.attentionScore);
+            break;
+
           case "error":
             console.error("Room error:", data.error);
             setRoomState((prev) => ({

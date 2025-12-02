@@ -665,6 +665,7 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
     - signal: WebRTC signaling data
     - start_audio: Player started speaking
     - stop_audio: Player stopped speaking
+    - facial_tracking: Player's facial tracking data (attention, emotion)
     
     Args:
         match_id: The room ID
@@ -717,6 +718,17 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
             "type": "player_speaking",
             "player": player_uid,
             "speaking": False
+        }, exclude_player=player_uid)
+    
+    elif message_type == "facial_tracking":
+        # Forward facial tracking data to opponent
+        # This includes attention score, gaze direction, and emotion
+        await broadcast_to_room(match_id, {
+            "type": "facial_tracking",
+            "player": player_uid,
+            "attention": data.get("attention", {}),
+            "emotion": data.get("emotion", {}),
+            "timestamp": data.get("timestamp")
         }, exclude_player=player_uid)
     
     else:
