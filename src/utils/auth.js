@@ -100,11 +100,13 @@ export const handleSignup = async ({ email, password, name, recaptchaToken }) =>
  * Handle user logout
  * @returns {Promise<void>}
  */
-export const handleLogout = async () => {
+export const handleLogout = async ({email}) => {
   localStorage.removeItem("ws_token");
   const res = await fetch(`/api/auth/logout`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     credentials: "include",
+    body: JSON.stringify({ email: email || "unknown" }),
   });
   
   if (!res.ok) {

@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await handleLogout();
+      await handleLogout(user.email);
     } catch (err) {
       console.error("Logout error:", err);
     }

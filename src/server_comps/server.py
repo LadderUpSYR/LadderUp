@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -18,6 +18,7 @@ import uuid
 import redis.asyncio as redis
 from redis.exceptions import RedisError
 from typing import Dict, Optional
+
 
 #uvicorn src.server.server:app --reload
 
@@ -150,6 +151,19 @@ app.add_middleware(
 # Import the practice STT handler from separate module
 from .practice_stt_fastapi import practice_stt_websocket_handler
 
+# Polymorphic Logging Base Class
+
+from abc import ABC, abstractmethod
+
+# interface
+class LoggableEvent(ABC):
+    @abstractmethod
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        # define at every new level
+        pass
+    # no dataum needed
+    # 
+
 @app.websocket("/ws/practice")
 async def practice_stt_websocket(websocket: WebSocket):
     """WebSocket endpoint for practice mode speech-to-text"""
@@ -259,11 +273,16 @@ def verify_password(password: str, hashed: str) -> bool:
     """Verify a password against its hash"""
     return hash_password(password) == hashed
 
-class SignupRequest(BaseModel):
+
+class SignupRequest(BaseModel, LoggableEvent):
     email: str
     password: str
     name: str
     recaptchaToken: str
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        print(f"[SECURITY] Got a signup request for {self.email} at {datetime.now()} | UUID: {uuid or 'N/A'}")
+
 
 @app.post("/api/auth/signup")
 async def signup(data: SignupRequest):
@@ -271,6 +290,7 @@ async def signup(data: SignupRequest):
     Create a new user account with email and password.
     Generates a unique UID for the user.
     """
+    data.log(uuid=None)  # No UUID yet before user creation
     email = data.email.lower().strip()
     password = data.password
     name = data.name.strip()
@@ -343,10 +363,13 @@ async def signup(data: SignupRequest):
         print(f"Signup error: {e}")
         raise HTTPException(status_code=500, detail="Failed to create account")
 
-class LoginEmailRequest(BaseModel):
+class LoginEmailRequest(BaseModel, LoggableEvent):
     email: str
     password: str
     recaptchaToken: str
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        print(f"[SECURITY] Got a Login Attempt Event via email at {datetime.now()} for {self.email} | UUID: {uuid or 'N/A'}")
 
 # any endpoint needs to be sent over https; reject otherwise...?
 @app.post("/api/auth/login-email")
@@ -354,6 +377,7 @@ async def login_email(data: LoginEmailRequest):
     """
     Login with email and password (not OAuth).
     """
+    data.log(uuid=None)  # No UUID yet before login verification
     email = data.email.lower().strip()
     password = data.password
     
@@ -424,8 +448,32 @@ async def login_email(data: LoginEmailRequest):
         print(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Login failed")
 
+class LogoutRequest(BaseModel, LoggableEvent):
+    email: str 
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        ip_address = "system"
+        user_agent = "unknown"
+        if request:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0] if forwarded else request.client.host
+            user_agent = request.headers.get("User-Agent", "unknown")
+
+        # Build the JSON Payload
+        log_payload = {
+            # REQUIRED for GCP to color-code the log blue/green
+            "severity": "INFO", 
+            "event": "user_logout", 
+            "email": self.email,
+            "uuid": uuid or "N/A",
+            "ip": ip_address,
+            "user_agent": user_agent,
+            "message": f"[AUTH] User {self.email} logged out."
+        }
+        print(json.dumps(log_payload))
+
 @app.post("/api/auth/logout")
-async def logout(request: Request):
+async def logout(request: Request, data: LogoutRequest):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     response = JSONResponse({"msg": "Successfully signed out"})
     
@@ -436,14 +484,31 @@ async def logout(request: Request):
         # No session token means nothing to do, return success
         return response 
 
-
+    # Get UUID from session if available
+    session_data = await get_session(session_token)
+    uid = session_data.get("uid") if session_data else None
     await delete_session(session_token)
+
+    data.log(request, uuid=uid)
 
     return response
 
+class AuthCheckRequest(BaseModel, LoggableEvent):
+    pass
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        log_payload = {
+            "severity": "INFO",
+            "event": "auth_check",
+            "uuid": uuid or "N/A",
+            "ip": request.headers.get("X-Forwarded-For", request.client.host) if request else "unknown",
+            "message": f"🔍 [AUTH] IP Address {request.headers.get('X-Forwarded-For', request.client.host) if request else 'unknown'} checked session. UUID: {uuid or 'N/A'}"
+        }
+        print(json.dumps(log_payload))
+
 
 @app.get("/api/auth/me")
-async def me(request: Request):
+async def me(request: Request, data: AuthCheckRequest = Depends()):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -460,6 +525,8 @@ async def me(request: Request):
         raise HTTPException(status_code=401, detail="Session expired")
 
     user_is_admin = await is_admin(session_data["uid"])
+
+    data.log(request, uuid=session_data["uid"])
     
     return {
         "user": {
@@ -473,25 +540,29 @@ async def me(request: Request):
 
 
 # questions grabbing from the DB
-class QuestionRequest(BaseModel):
+class QuestionRequest(BaseModel, LoggableEvent):
     questionId: int
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        print(f"[DATABASE] Pulling a question from the DB of question id {self.questionId} | UUID: {uuid or 'N/A'}")
 
 @app.post("/api/question/id")
 async def getQuestion(data: QuestionRequest):
     # data has the questionId type
     # do we also need to track who the user was making the call? Such that we can track data and analytics
-    print("getQuestion endpoint called with:", data)
+    
+    
     valid_id = data.questionId
-    #analytics.hook(id)
 
     question_ref = db.collection("questions").document(str(valid_id))
     qs = question_ref.get()
 
     if qs.exists:
         dicti = qs.to_dict()
-        print("Found answer in firestore.")
+        data.log(uuid=None)  # /api/question/id is unauthenticated endpoint
     else:
         # default dictionary, is there a better way of getting this?
+        print("[WARN] FALLING BACK ON DEFAULT!")
         dicti = {
             "answerCriteria":"This question should follow the STAR principle. They can answer in many ways, but should be short (maximum of one minute or ten sentences).",
             "avgScore":1,
@@ -502,9 +573,41 @@ async def getQuestion(data: QuestionRequest):
     response = JSONResponse(dicti)
     return response
     
+
+
+class RandomQuestionRequest(BaseModel, LoggableEvent):
+    pass # get class
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        ip_address = "system"
+        user_agent = "unknown"
+        if request:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0] if forwarded else request.client.host
+            user_agent = request.headers.get("User-Agent", "unknown")
+
+        # Build the JSON Payload
+        log_payload = {
+            # REQUIRED for GCP to color-code the log blue/green
+            "severity": "INFO", 
+            "event": "random_question_requested", 
+            "uuid": uuid or "N/A",
+            "ip": ip_address,
+            "user_agent": user_agent,
+            "message": f"[DATABASE] Random Question asked, given to ip {ip_address}"
+        }
+        print(json.dumps(log_payload))
+
 @app.get("/api/question/random")
-async def getRandomQuestion():
+async def getRandomQuestion(request: Request, data: RandomQuestionRequest = Depends()):
     print("getRandomQuestion endpoint called")
+    # Extract UUID from session if available
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    uid = None
+    if session_token:
+        session_data = await get_session(session_token)
+        if session_data:
+            uid = session_data.get("uid")
+    
     try:
         questions_ref = db.collection("questions")
         questions = questions_ref.stream()
@@ -527,18 +630,42 @@ async def getRandomQuestion():
             }
         else:
             dicti = random.choice(all_questions)
-            print("Chose a random question, rather than default question")
+            data.log(request, uuid=uid)
 
         return JSONResponse(dicti)
     except Exception as e:
         print("Error fetching random question:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch random question")
 
-class SubmitAnswerRequest(BaseModel):
+
+
+
+class SubmitAnswerRequest(BaseModel, LoggableEvent):
     questionId: str
     question: str
     answer: str
     answerCriteria: Optional[str] = None
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        ip_address = "system"
+        user_agent = "unknown"
+        if request:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0] if forwarded else request.client.host
+            user_agent = request.headers.get("User-Agent", "unknown")
+
+        # Build the JSON Payload
+        log_payload = {
+            # REQUIRED for GCP to color-code the log blue/green
+            "severity": "INFO", 
+            "event": "answer_submitted_for_grading", 
+            "uuid": uuid or "N/A",
+            "ip": ip_address,
+            "user_agent": user_agent,
+            "message": f"[LLM GRADING] starting to grade answer: {self.answer} on question: {self.questionId} | text: {self.question}"
+        }
+        print(json.dumps(log_payload))
+
 
 from src.server_comps.answer_to_db_middleware import answer_to_db_middleware
 
@@ -562,6 +689,7 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
     try:
         # 1. Use the middleware to handle Grading + Database Saving
         # This replaces the manual grader initialization and DB update logic
+        data.log(request, uuid=uid)
         answer_record = await answer_to_db_middleware(
             answer=data.answer,
             question_id=data.questionId,
@@ -602,8 +730,26 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         print("Error submitting answer:", e)
         raise HTTPException(status_code=500, detail=f"Failed to submit answer: {str(e)}")
 
-class UpdateProfileRequest(BaseModel):
+class UpdateProfileRequest(BaseModel, LoggableEvent):
     name: str
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        ip_address = "system"
+        user_agent = "unknown"
+        if request:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0] if forwarded else request.client.host
+            user_agent = request.headers.get("User-Agent", "unknown")
+
+        log_payload = {
+            "severity": "INFO",
+            "event": "profile_updated",
+            "uuid": uuid or "N/A",
+            "ip": ip_address,
+            "user_agent": user_agent,
+            "message": f"[PROFILE] User {uuid or 'unknown'} updated their profile"
+        }
+        print(json.dumps(log_payload))
 
 @app.put("/api/profile/edit")
 async def edit_profile(request: Request, data: UpdateProfileRequest):
@@ -622,6 +768,9 @@ async def edit_profile(request: Request, data: UpdateProfileRequest):
         raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
 
     try:
+        # Log the profile update attempt
+        data.log(request, uuid=uid)
+        
         # Update the user's profile in Firestore
         user_ref = db.collection("users").document(uid)
         user_ref.update({"name": data.name})
@@ -635,8 +784,26 @@ async def edit_profile(request: Request, data: UpdateProfileRequest):
         print("Error updating profile:", e)
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
-class UpdatePasswordRequest(BaseModel):
+class UpdatePasswordRequest(BaseModel, LoggableEvent):
     password: str
+
+    def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
+        ip_address = "system"
+        user_agent = "unknown"
+        if request:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0] if forwarded else request.client.host
+            user_agent = request.headers.get("User-Agent", "unknown")
+
+        log_payload = {
+            "severity": "INFO",
+            "event": "password_changed",
+            "uuid": uuid or "N/A",
+            "ip": ip_address,
+            "user_agent": user_agent,
+            "message": f"[SECURITY] User {uuid or 'unknown'} changed their password"
+        }
+        print(json.dumps(log_payload))
 
 @app.put("/api/profile/change-password")
 async def change_password(request: Request, data: UpdatePasswordRequest):
@@ -671,6 +838,9 @@ async def change_password(request: Request, data: UpdatePasswordRequest):
         # Hash and update the password
         password_hash = hash_password(data.password)
         user_ref.update({"password_hash": password_hash})
+        
+        # Log the password change
+        data.log(request, uuid=uid)
 
         return {"msg": "Password updated successfully"}
     except HTTPException:
