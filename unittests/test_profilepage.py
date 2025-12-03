@@ -1,90 +1,125 @@
-import os, sys
-# 💡 Change MagicMock to AsyncMock for the redis client
-from unittest.mock import patch, MagicMock, AsyncMock 
-from unittests.conftest import load_app_with_env
-import pytest
-from datetime import datetime, timedelta, timezone # Need these for the mock data
+"""
+Unit tests for profile data retrieval.
+Tests the Controller Layer by mocking Manager Singletons.
+"""
+import sys
+import os
+from unittest.mock import MagicMock, AsyncMock, patch
+from datetime import datetime, timedelta, timezone
 
-def test_profilepage_shows_user_with_answered_question(load_app_with_env):
-    """
-    Simulate a user who logged in and has answered one question...
-    """
+# --- CRITICAL FIX: MOCK DATABASE BEFORE IMPORTING SERVER ---
+# 1. Create a fake database module
+mock_db_module = MagicMock()
+mock_db_module.db = MagicMock()
+mock_db_module.redis_client = MagicMock()
+mock_db_module.bucket = MagicMock()
+mock_db_module.SESSION_COOKIE_NAME = "__session"
+mock_db_module.SESSION_TTL_SECONDS = 3600
 
-    appmod, client, fakedb = load_app_with_env
+# 2. Add async helpers
+mock_db_module.store_session = AsyncMock()
+mock_db_module.get_session = AsyncMock()
+mock_db_module.delete_session = AsyncMock()
+mock_db_module.build_session_payload = MagicMock()
 
-    fake_uid = "user123"
-    fake_profile = {
-        "name": "ProfileTester",
-        "email": "prof@test.com",
-        # store a minimal questions structure matching app expectations
-        "questions": [
-            {
-                "questionId": 2,
-                "question": "Where do you see yourself in five years?",
-                "answer": "Leading product at a mission-driven org",
-                "score": 4,
-                "date": "2025-10-05"
-            }
-        ],
-        "is_admin": False
-    }
-    
-    # 💡 Data that Redis needs to return for a successful /api/auth/me
-    # Calculate a valid expiration time for the mock session
-    expires_timestamp = str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
-    mock_session_data = {
-        "uid": fake_uid,
-        "name": fake_profile["name"],
-        "email": fake_profile["email"],
-        "expires": expires_timestamp,
-    }
+# 3. Inject this fake module into sys.modules
+sys.modules["src.server_comps.database"] = mock_db_module
+sys.modules["src.database"] = mock_db_module
+
+# --- END CRITICAL FIX ---
+
+from fastapi.testclient import TestClient
+from fastapi import HTTPException
+
+# Add the parent directory to the path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.server_comps.server import app, SESSION_COOKIE_NAME
 
 
-    # Pre-populate the fake DB's users store for this uid
-    fakedb.users[fake_uid] = fake_profile
+class TestProfileData:
+    """Test data retrieval endpoints like /me and /answered-questions"""
 
-    # Patch Google verification, DB, AND Redis
-    # 💡 Use AsyncMock for redis_client
-    with patch("src.server_comps.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server_comps.server.db") as mock_db, \
-         patch("src.server_comps.server.redis_client", new_callable=AsyncMock) as mock_redis: 
+    def _get_session_data(self, uid="user123", name="ProfileTester", email="prof@test.com"):
+        return {
+            "uid": uid,
+            "name": name,
+            "email": email,
+            "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
+        }
 
-        mock_verify.return_value = {"sub": fake_uid, "email": fake_profile["email"], "name": fake_profile["name"]}
-
-        # Mock Firestore response for user lookup
-        fake_doc = MagicMock()
-        fake_doc.exists = True
-        fake_doc.to_dict.return_value = fake_profile
-        mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
-
-        # 💡 Set up the mock to return the session data when /api/auth/me calls hgetall
-        mock_redis.hgetall.return_value = mock_session_data
+    @patch("src.server_comps.server.profile_manager.get_answered_questions", new_callable=AsyncMock)
+    @patch("src.server_comps.server.is_admin", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    def test_profilepage_shows_user_with_answered_question(self, mock_get_session, mock_is_admin, mock_get_questions):
+        """
+        Simulate a user who is logged in and verifies:
+        1. /api/auth/me returns basic user info
+        2. /api/profile/answered-questions returns the question list
+        """
         
-        # Call login endpoint to set session cookie
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
+        # --- SETUP MOCK DATA ---
+        fake_uid = "user123"
+        fake_profile = {
+            "name": "ProfileTester",
+            "email": "prof@test.com",
+            "is_admin": False
+        }
+        
+        fake_questions_response = {
+            "answered_questions": [
+                {
+                    "questionId": 2,
+                    "question": "Where do you see yourself in five years?",
+                    "answer": "Leading product at a mission-driven org",
+                    "score": 4,
+                    "date": "2025-10-05"
+                }
+            ],
+            "total_answered": 1,
+            "average_score": 4.0
+        }
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["user"]["uid"] == fake_uid
-        assert data["user"]["name"] == fake_profile["name"]
+        # --- CONFIGURE MOCKS ---
+        # 1. Simulate active session
+        mock_get_session.return_value = self._get_session_data(
+            uid=fake_uid, 
+            name=fake_profile["name"], 
+            email=fake_profile["email"]
+        )
+        
+        # 2. Simulate User is NOT admin
+        mock_is_admin.return_value = False
+        
+        # 3. Simulate ProfileManager returning the questions
+        mock_get_questions.return_value = fake_questions_response
 
-        # The TestClient has the session cookie set; now call /api/auth/me to verify
-        # This is now inside the patch block AND the mock is configured for async retrieval.
+        # --- EXECUTE TESTS ---
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE_NAME, "valid-token")
 
-        r = client.get("/api/auth/me")
-        assert r.status_code == 200
-        me = r.json()["user"]
-        assert me["uid"] == fake_uid
-        assert me["name"] == fake_profile["name"]
-        assert me["email"] == fake_profile["email"]
+        # Step 1: Check /api/auth/me
+        r_me = client.get("/api/auth/me")
+        assert r_me.status_code == 200
+        me_data = r_me.json()["user"]
+        
+        assert me_data["uid"] == fake_uid
+        assert me_data["name"] == fake_profile["name"]
+        assert me_data["email"] == fake_profile["email"]
+        assert me_data["is_admin"] is False
 
-    # Verify the fake DB still has the answered question (This check is fine outside the patch block)
-    assert fake_uid in fakedb.users
-    stored = fakedb.users[fake_uid]
-    assert "questions" in stored
-    assert isinstance(stored["questions"], list)
-    assert len(stored["questions"]) == 1
-    q = stored["questions"][0]
-    assert q["questionId"] == 2
-    assert "answer" in q
-    assert q["score"] == 4
+        # Step 2: Check /api/profile/answered-questions
+        r_questions = client.get("/api/profile/answered-questions")
+        assert r_questions.status_code == 200
+        q_data = r_questions.json()
+        
+        # Verify the endpoint returned exactly what the Manager gave it
+        assert q_data["total_answered"] == 1
+        assert len(q_data["answered_questions"]) == 1
+        assert q_data["answered_questions"][0]["questionId"] == 2
+        assert q_data["answered_questions"][0]["answer"] == "Leading product at a mission-driven org"
+
+        # --- VERIFY CALLS ---
+        # Ensure the controller actually called the Manager with the correct UID
+        mock_get_questions.assert_called_once_with(fake_uid)
+        mock_is_admin.assert_called_once_with(fake_uid)

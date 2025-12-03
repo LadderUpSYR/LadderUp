@@ -19,122 +19,23 @@ import redis.asyncio as redis
 from redis.exceptions import RedisError
 from typing import Dict, Optional
 
+from src.server_comps.database import db, redis_client, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS, get_session
+
+#singleton class managers
+
+from src.server_comps.AuthManager import AuthManager
+auth_manager = AuthManager()
+
+from src.server_comps.ProfileManager import ProfileManager
+profile_manager = ProfileManager()
+
+from src.server_comps.QuestionManager import QuestionManager
+question_manager = QuestionManager()
 
 #uvicorn src.server.server:app --reload
 
 # Load environment variables
 load_dotenv()
-RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")
-
-# Connect to Redis
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-SESSION_PREFIX = "session:"
-SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
-
-print("Using REDIS_HOST:", REDIS_HOST, "REDIS_PORT:", REDIS_PORT)
-
-# Fallback in-memory session store if Redis is unavailable
-memory_sessions: Dict[str, Dict[str, str]] = {}
-
-async def verify_recaptcha(token: str) -> bool:
-    """Verify a reCAPTCHA token with Google's API."""
-    if os.getenv("TESTING") == "1":
-        return True
-
-    if not RECAPTCHA_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="Server misconfigured: RECAPTCHA_SECRET_KEY not set")
-
-    try:
-        response = http_requests.post("https://www.google.com/recaptcha/api/siteverify", {
-            "secret": RECAPTCHA_SECRET_KEY,
-            "response": token
-        })
-        result = response.json()
-        return result.get("success", False)
-    except Exception as e:
-        print(f"reCAPTCHA verification failed: {e}")
-        return False
-
-
-def build_session_payload(uid: str, name: str, email: str) -> Dict[str, str]:
-    """Create a session payload with a refreshed expiry."""
-    return {
-        "uid": uid,
-        "name": name,
-        "email": email,
-        "expires": str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
-    }
-
-
-async def store_session(session_token: str, data: Dict[str, str]) -> None:
-    """Persist session data in Redis, falling back to in-memory storage."""
-    expires_at = data.get("expires")
-    if not expires_at:
-        expires_at = str((datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)).timestamp())
-        data["expires"] = expires_at
-
-    # Ensure all values are strings for Redis compatibility
-    redis_payload = {k: str(v) for k, v in data.items()}
-
-    try:
-        await redis_client.hset(f"{SESSION_PREFIX}{session_token}", mapping=redis_payload)
-        await redis_client.expire(f"{SESSION_PREFIX}{session_token}", SESSION_TTL_SECONDS)
-    except (RedisError, AttributeError) as err:
-        print(f"[session] Redis unavailable, using in-memory store: {err}")
-        memory_sessions[session_token] = redis_payload
-
-
-async def get_session(session_token: str) -> Optional[Dict[str, str]]:
-    """Retrieve session data, preferring Redis and falling back to memory."""
-    try:
-        data = await redis_client.hgetall(f"{SESSION_PREFIX}{session_token}")
-        if data:
-            return data
-    except (RedisError, AttributeError) as err:
-        print(f"[session] Redis fetch failed, checking memory store: {err}")
-
-    data = memory_sessions.get(session_token)
-    if not data:
-        return None
-
-    expires = float(data.get("expires", 0))
-    if expires < datetime.now(timezone.utc).timestamp():
-        memory_sessions.pop(session_token, None)
-        return None
-
-    return data
-
-
-async def delete_session(session_token: str) -> None:
-    """Delete session data from Redis and memory."""
-    try:
-        await redis_client.delete(f"{SESSION_PREFIX}{session_token}")
-    except (RedisError, AttributeError) as err:
-        print(f"[session] Redis delete failed: {err}")
-
-    memory_sessions.pop(session_token, None)
-
-
-# Load environment variables
-load_dotenv()
-
-
-# ADD THIS IN ITS PLACE
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-SESSION_COOKIE_NAME = "__session"
-
-cred = credentials.ApplicationDefault() 
-
-firebase_admin.initialize_app(cred, {
-    'storageBucket': 'ladderup-5e25d.firebasestorage.app',
-    'projectId': 'ladderup-5e25d',
-})
-
-db = firestore.client()
-bucket = storage.bucket()
-
 app = FastAPI()
 
 # Allow React dev server
@@ -172,107 +73,24 @@ async def practice_stt_websocket(websocket: WebSocket):
 @app.get("/health")
 def health():
     return {"ok": True}
-
+    
 @app.post("/api/auth/login")
 async def login(data: dict):
-    print("got a call.")
-    token = data.get("token")
-    recaptcha_token = data.get("recaptchaToken")
+    result = await auth_manager.login(data)
+    response = JSONResponse(result)
     
-    if not token:
-        raise HTTPException(status_code=400, detail="Missing token")
-    if not recaptcha_token:
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification required")
-        
-    # Verify reCAPTCHA first
-    if not await verify_recaptcha(recaptcha_token):
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
-
-    if not GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Server misconfigured: GOOGLE_CLIENT_ID not set")
-
-    try:
-        # Verify token with Google (must match React client ID)
-        idinfo = id_token.verify_oauth2_token(
-            token,
-            requests.Request(),
-            GOOGLE_CLIENT_ID
-        )
-    except Exception as exc:
-        print(f"Token verification failed: {exc}")
-        raise HTTPException(status_code=401, detail="Invalid token") from None
-
-    try:
-        uid = idinfo["sub"]          # unique Google user ID
-        email = idinfo.get("email")
-        name = idinfo.get("name", "") # creates username as google name
-
-        # Check Firestore for user profile
-        user_ref = db.collection("users").document(uid)
-        doc = user_ref.get()
-
-        userExisted = False 
-
-        if doc.exists:
-            profile = doc.to_dict()
-            name = profile.get("name", name)  # fallback to Google if missing
-            email = profile.get("email", email)
-            userExisted = True
-        else:
-            profile = {
-                "uid": uid,
-                "name": name,
-                "email": email,
-                "questions": [],
-                "answered_questions": [],
-                "auth_provider": "google",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            user_ref.set(profile)
-            userExisted = False
-        
-        session_token = secrets.token_urlsafe(32)
-        await store_session(session_token, build_session_payload(uid, name, email))
-
-        # Get admin status
-        is_admin = profile.get("is_admin", False)
-        
-        # Return user info + set cookie
-        response = JSONResponse({
-            "user": {
-                "uid": uid,
-                "name": name,
-                "email": email,
-                "is_admin": is_admin
-            },
-            "token": session_token,
-            "msg": "User Exists" if userExisted else "New user created"
-        })
-        response.set_cookie(
-            key=SESSION_COOKIE_NAME,
-            value=session_token,
-            httponly=True,
-            secure=True,  # True in production
-            samesite="lax",
-            max_age=SESSION_TTL_SECONDS
-        )
-        return response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Login error: {e}")
-        raise HTTPException(status_code=500, detail="Login failed")
-
-# Helper function to hash passwords
-def hash_password(password: str) -> str:
-    """Hash a password using SHA-256"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify a password against its hash"""
-    return hash_password(password) == hashed
-
+    # FIX: Extract the token from the result dict
+    session_token = result.get("token")
+    
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        secure=True,  # True in production
+        samesite="lax",
+        max_age=SESSION_TTL_SECONDS
+    )
+    return response
 
 class SignupRequest(BaseModel, LoggableEvent):
     email: str
@@ -290,77 +108,32 @@ async def signup(data: SignupRequest):
     Create a new user account with email and password.
     Generates a unique UID for the user.
     """
-    data.log(uuid=None)  # No UUID yet before user creation
-    email = data.email.lower().strip()
-    password = data.password
-    name = data.name.strip()
+    # Log
+    data.log(uuid=None) 
     
-    # Verify reCAPTCHA first
-    if not await verify_recaptcha(data.recaptchaToken):
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
-
-    # Validation
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Invalid email address")
-    
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    
-    if len(name) < 2:
-        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
-
     try:
-        # Check if email already exists
-        users_ref = db.collection("users")
-        existing_users = users_ref.where("email", "==", email).limit(1).stream()
+        # Delegate Logic to Singleton Manager
+        # We convert the Pydantic model to a dict for the manager
+        result = await auth_manager.signup(data.dict())
+
+        # 3. Handle Response & Cookies
+        response = JSONResponse(result)
         
-        if any(existing_users):
-            raise HTTPException(status_code=409, detail="Email already registered")
-
-        # Generate a unique UID
-        uid = str(uuid.uuid4())
-        
-        # Hash the password
-        password_hash = hash_password(password)
-
-        # Create user profile in Firestore
-        user_data = {
-            "uid": uid,
-            "email": email,
-            "name": name,
-            "password_hash": password_hash, 
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "questions": [],
-            "answered_questions": [],
-            "auth_provider": "email" # new field needs to be reflected in firestore db now
-        }
-        
-        user_ref = db.collection("users").document(uid)
-        user_ref.set(user_data)
-
-        # Create session
-        session_token = secrets.token_urlsafe(32)
-        await store_session(session_token, build_session_payload(uid, name, email))
-
-        # Return user info + set cookie
-        response = JSONResponse({
-            "user": {"uid": uid, "name": name, "email": email},
-            "msg": "Account created successfully"
-        })
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
-            value=session_token,
+            value=result["token"],
             httponly=True,
-            secure=True,  # True in production
+            secure=True,
             samesite="lax",
             max_age=SESSION_TTL_SECONDS
         )
         return response
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        print(f"Signup error: {e}")
+        # Fallback for unexpected errors
+        print(f"Signup Endpoint Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to create account")
 
 class LoginEmailRequest(BaseModel, LoggableEvent):
@@ -371,70 +144,25 @@ class LoginEmailRequest(BaseModel, LoggableEvent):
     def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
         print(f"[SECURITY] Got a Login Attempt Event via email at {datetime.now()} for {self.email} | UUID: {uuid or 'N/A'}")
 
-# any endpoint needs to be sent over https; reject otherwise...?
+
 @app.post("/api/auth/login-email")
 async def login_email(data: LoginEmailRequest):
     """
     Login with email and password (not OAuth).
     """
-    data.log(uuid=None)  # No UUID yet before login verification
-    email = data.email.lower().strip()
-    password = data.password
+    # 1. Log the event
+    data.log(uuid=None)
     
-    # Verify reCAPTCHA first
-    if not await verify_recaptcha(data.recaptchaToken):
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
-
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password required")
-
     try:
-        # Find user by email
-        users_ref = db.collection("users")
-        users = users_ref.where("email", "==", email).limit(1).stream()
-        
-        user_doc = None
-        for user in users:
-            user_doc = user
-            break
-        
-        if not user_doc:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
-        
-        user_data = user_doc.to_dict()
-        
-        # Verify password (only for email auth users)
-        if user_data.get("auth_provider") != "email":
-            raise HTTPException(status_code=401, detail="Please use Google sign-in for this account")
-        
-        password_hash = user_data.get("password_hash")
-        if not password_hash or not verify_password(password, password_hash):
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+        # 2. Delegate to Singleton Manager
+        result = await auth_manager.login_email(data.dict())
 
-        # Create session
-        uid = user_data.get("uid")
-        name = user_data.get("name")
+        # 3. Handle Response & Cookies
+        response = JSONResponse(result)
         
-        session_token = secrets.token_urlsafe(32)
-        await store_session(session_token, build_session_payload(uid, name, email))
-
-        # Get admin status
-        is_admin = user_data.get("is_admin", False)
-
-        # Return user info + set cookie
-        response = JSONResponse({
-            "user": {
-                "uid": uid,
-                "name": name,
-                "email": email,
-                "is_admin": is_admin
-            },
-            "token": session_token,
-            "msg": "Login successful"
-        })
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
-            value=session_token,
+            value=result["token"],
             httponly=True,
             secure=True,  # True in production
             samesite="lax",
@@ -442,10 +170,11 @@ async def login_email(data: LoginEmailRequest):
         )
         return response
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        print(f"Login error: {e}")
+        # Fallback error handling
+        print(f"Login Email Endpoint Error: {e}")
         raise HTTPException(status_code=500, detail="Login failed")
 
 class LogoutRequest(BaseModel, LoggableEvent):
@@ -472,23 +201,22 @@ class LogoutRequest(BaseModel, LoggableEvent):
         }
         print(json.dumps(log_payload))
 
+
 @app.post("/api/auth/logout")
 async def logout(request: Request, data: LogoutRequest):
+    """
+    Logs out the user by deleting their session on server and cookie on client.
+    """
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    response = JSONResponse({"msg": "Successfully signed out"})
     
-    # Always delete the cookie on the client side, regardless of server status
+    # Prepare response (always delete cookie)
+    response = JSONResponse({"msg": "Successfully signed out"})
     response.delete_cookie(key=SESSION_COOKIE_NAME)
     
-    if not session_token:
-        # No session token means nothing to do, return success
-        return response 
+    # Delegate logic to Manager (returns UID if session was valid)
+    uid = await auth_manager.logout(session_token)
 
-    # Get UUID from session if available
-    session_data = await get_session(session_token)
-    uid = session_data.get("uid") if session_data else None
-    await delete_session(session_token)
-
+    # Log the event (Controller concern)
     data.log(request, uuid=uid)
 
     return response
@@ -537,8 +265,6 @@ async def me(request: Request, data: AuthCheckRequest = Depends()):
         }
     }
 
-
-
 # questions grabbing from the DB
 class QuestionRequest(BaseModel, LoggableEvent):
     questionId: int
@@ -548,32 +274,9 @@ class QuestionRequest(BaseModel, LoggableEvent):
 
 @app.post("/api/question/id")
 async def getQuestion(data: QuestionRequest):
-    # data has the questionId type
-    # do we also need to track who the user was making the call? Such that we can track data and analytics
-    
-    
-    valid_id = data.questionId
-
-    question_ref = db.collection("questions").document(str(valid_id))
-    qs = question_ref.get()
-
-    if qs.exists:
-        dicti = qs.to_dict()
-        data.log(uuid=None)  # /api/question/id is unauthenticated endpoint
-    else:
-        # default dictionary, is there a better way of getting this?
-        print("[WARN] FALLING BACK ON DEFAULT!")
-        dicti = {
-            "answerCriteria":"This question should follow the STAR principle. They can answer in many ways, but should be short (maximum of one minute or ten sentences).",
-            "avgScore":1,
-            "numAttempts":0,
-            "question": "Tell us about a time you had a great team member. How did they make the project better?"
-            }
-
-    response = JSONResponse(dicti)
-    return response
-    
-
+    result = await question_manager.get_question_by_id(data.questionId)
+    data.log(uuid=None)
+    return JSONResponse(result)
 
 class RandomQuestionRequest(BaseModel, LoggableEvent):
     pass # get class
@@ -599,43 +302,19 @@ class RandomQuestionRequest(BaseModel, LoggableEvent):
 
 @app.get("/api/question/random")
 async def getRandomQuestion(request: Request, data: RandomQuestionRequest = Depends()):
-    print("getRandomQuestion endpoint called")
-    # Extract UUID from session if available
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     uid = None
     if session_token:
-        session_data = await get_session(session_token)
-        if session_data:
-            uid = session_data.get("uid")
+        try:
+            session_data = await get_session(session_token)
+            if session_data:
+                uid = session_data.get("uid")
+        except:
+            pass
     
-    try:
-        questions_ref = db.collection("questions")
-        questions = questions_ref.stream()
-        
-        # Get all questions with their IDs
-        all_questions = []
-        for q in questions:
-            question_data = q.to_dict()
-            question_data["questionId"] = q.id  # Add the document ID
-            all_questions.append(question_data)
-
-        if not all_questions:
-            # default question if DB empty
-            dicti = {
-                "questionId": "default-1",
-                "answerCriteria": "This question should follow the STAR principle...",
-                "avgScore": 1,
-                "numAttempts": 0,
-                "question": "Tell us about a time you had a great team member..."
-            }
-        else:
-            dicti = random.choice(all_questions)
-            data.log(request, uuid=uid)
-
-        return JSONResponse(dicti)
-    except Exception as e:
-        print("Error fetching random question:", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch random question")
+    result = await question_manager.get_random_question()
+    data.log(request, uuid=uid)
+    return JSONResponse(result)
 
 
 
@@ -751,39 +430,6 @@ class UpdateProfileRequest(BaseModel, LoggableEvent):
         }
         print(json.dumps(log_payload))
 
-@app.put("/api/profile/edit")
-async def edit_profile(request: Request, data: UpdateProfileRequest):
-    session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    session_data = await get_session(session_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    uid = session_data["uid"]
-
-    # Validate name
-    if len(data.name.strip()) < 2:
-        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
-
-    try:
-        # Log the profile update attempt
-        data.log(request, uuid=uid)
-        
-        # Update the user's profile in Firestore
-        user_ref = db.collection("users").document(uid)
-        user_ref.update({"name": data.name})
-
-        # Update the session cache
-        session_data["name"] = data.name
-        await store_session(session_token, session_data)
-
-        return {"msg": "Profile updated successfully", "user": {"uid": uid, "name": data.name, "email": session_data["email"]}}
-    except Exception as e:
-        print("Error updating profile:", e)
-        raise HTTPException(status_code=500, detail="Failed to update profile")
-
 class UpdatePasswordRequest(BaseModel, LoggableEvent):
     password: str
 
@@ -805,6 +451,30 @@ class UpdatePasswordRequest(BaseModel, LoggableEvent):
         }
         print(json.dumps(log_payload))
 
+
+@app.put("/api/profile/edit")
+async def edit_profile(request: Request, data: UpdateProfileRequest):
+    # 1. Auth Check
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    
+    uid = session_data["uid"]
+
+    # 2. Delegate to Manager
+    # We pass session_data/token because the manager needs to update the session cache
+    updated_user = await profile_manager.update_profile(uid, data.name, session_token, session_data)
+
+    # 3. Log
+    data.log(request, uuid=uid)
+
+    return {"msg": "Profile updated successfully", "user": updated_user}
+
+
 @app.put("/api/profile/change-password")
 async def change_password(request: Request, data: UpdatePasswordRequest):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -817,37 +487,14 @@ async def change_password(request: Request, data: UpdatePasswordRequest):
 
     uid = session_data["uid"]
 
-    # Validate password
-    if len(data.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    # Delegate to Manager
+    await profile_manager.change_password(uid, data.password)
 
-    try:
-        # Get user data to check auth provider
-        user_ref = db.collection("users").document(uid)
-        user_doc = user_ref.get()
-        
-        if not user_doc.exists:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_data = user_doc.to_dict()
-        
-        # Only allow password changes for email auth users
-        if user_data.get("auth_provider") != "email":
-            raise HTTPException(status_code=400, detail="Cannot change password for OAuth accounts")
+    # Log
+    data.log(request, uuid=uid)
 
-        # Hash and update the password
-        password_hash = hash_password(data.password)
-        user_ref.update({"password_hash": password_hash})
-        
-        # Log the password change
-        data.log(request, uuid=uid)
+    return {"msg": "Password updated successfully"}
 
-        return {"msg": "Password updated successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("Error updating password:", e)
-        raise HTTPException(status_code=500, detail="Failed to update password")
 
 @app.delete("/api/auth/delete-account")
 async def delete_account(request: Request):
@@ -861,25 +508,16 @@ async def delete_account(request: Request):
 
     uid = session_data["uid"]
 
-    try:
-        # Delete the user's profile from Firestore
-        user_ref = db.collection("users").document(uid)
-        user_ref.delete()
+    # Delegate to Manager
+    await profile_manager.delete_account(uid, session_token)
 
-        # Remove the session
-        await delete_session(session_token)
+    response = JSONResponse({"msg": "Account deleted successfully"})
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    return response
 
-        # Return response with cookie deletion
-        response = JSONResponse({"msg": "Account deleted successfully"})
-        response.delete_cookie(key=SESSION_COOKIE_NAME)
-        return response
-    except Exception as e:
-        print("Error deleting account:", e)
-        raise HTTPException(status_code=500, detail="Failed to delete account")
 
 @app.post("/api/profile/upload-resume")
 async def upload_resume(request: Request, file: UploadFile = File(...)):
-    """Upload a resume to Firebase Storage"""
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -890,40 +528,53 @@ async def upload_resume(request: Request, file: UploadFile = File(...)):
 
     uid = session_data["uid"]
 
-    # Validate file type
+    # Validate Request (Controller Concern)
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Validate file size (max 10MB)
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size must be less than 10MB")
 
-    try:
-        # Create a unique filename
-        file_path = f"resumes/{uid}/resume.pdf"
-        
-        # Upload to Firebase Storage
-        blob = bucket.blob(file_path)
-        blob.upload_from_string(content, content_type='application/pdf')
-        
-        # Make the file publicly accessible (or use signed URLs for private access)
-        blob.make_public()
-        
-        # Get the public URL
-        file_url = blob.public_url
+    # Delegate Logic (Manager Concern)
+    file_url = await profile_manager.upload_resume(uid, content)
 
-        # Update user profile with resume URL
-        user_ref = db.collection("users").document(uid)
-        user_ref.update({
-            "resume_url": file_url,
-            "resume_uploaded_at": datetime.now(timezone.utc).isoformat()
-        })
+    return {"msg": "Resume uploaded successfully", "resume_url": file_url}
 
-        return {"msg": "Resume uploaded successfully", "resume_url": file_url}
-    except Exception as e:
-        print("Error uploading resume:", e)
-        raise HTTPException(status_code=500, detail="Failed to upload resume")
+
+@app.get("/api/profile/resume")
+async def get_resume(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    resume_url = await profile_manager.get_resume(uid)
+    
+    if not resume_url:
+        return {"resume_url": None, "msg": "No resume uploaded"}
+    
+    return {"resume_url": resume_url}
+
+
+@app.get("/api/profile/answered-questions")
+async def get_answered_questions(request: Request):
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_data = await get_session(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    uid = session_data["uid"]
+
+    return await profile_manager.get_answered_questions(uid)
 
 async def is_admin(uid: str) -> bool:
     """Check if a user has admin privileges"""
@@ -982,82 +633,6 @@ async def get_all_users(request: Request):
     except Exception as e:
         print("Error fetching users:", e)
         raise HTTPException(status_code=500, detail="Failed to fetch users")
-
-@app.get("/api/profile/resume")
-async def get_resume(request: Request):
-    """Get the resume URL for the authenticated user"""
-    session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    session_data = await get_session(session_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    uid = session_data["uid"]
-
-    try:
-        # Get user profile
-        user_ref = db.collection("users").document(uid)
-        user_doc = user_ref.get()
-        
-        if not user_doc.exists:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_data = user_doc.to_dict()
-        resume_url = user_data.get("resume_url")
-        
-        if not resume_url:
-            return {"resume_url": None, "msg": "No resume uploaded"}
-        
-        return {"resume_url": resume_url}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("Error fetching resume:", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch resume")
-
-@app.get("/api/profile/answered-questions")
-async def get_answered_questions(request: Request):
-    """Get all answered questions for the authenticated user"""
-    session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    session_data = await get_session(session_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    uid = session_data["uid"]
-
-    try:
-        # Get user profile
-        user_ref = db.collection("users").document(uid)
-        user_doc = user_ref.get()
-        
-        if not user_doc.exists:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_data = user_doc.to_dict()
-        answered_questions = user_data.get("answered_questions", [])
-        
-        # Sort by date (most recent first)
-        answered_questions.sort(key=lambda x: x.get("date", ""), reverse=True)
-        
-        # Calculate statistics
-        total_answered = len(answered_questions)
-        average_score = sum(q.get("score", 0) for q in answered_questions) / total_answered if total_answered > 0 else 0
-        
-        return {
-            "answered_questions": answered_questions,
-            "total_answered": total_answered,
-            "average_score": round(average_score, 2)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("Error fetching answered questions:", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch answered questions")
 
 @app.get("/api/matchmaking/queue-status")
 async def get_queue_status():

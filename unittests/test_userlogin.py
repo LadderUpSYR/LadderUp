@@ -1,50 +1,146 @@
-from unittest.mock import patch, MagicMock, AsyncMock
+"""
+Unit tests for the Google login endpoint.
+Tests the Controller Layer by mocking the AuthManager Singleton.
+"""
+import sys
+import os
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
-# Import your helper to load app with patched env
-from unittests.conftest import load_app_with_env  # or define _load_app_with_env() in this file
+mock_db_module = MagicMock()
+mock_db_module.db = MagicMock()
+mock_db_module.redis_client = MagicMock()
+mock_db_module.bucket = MagicMock()
+mock_db_module.SESSION_COOKIE_NAME = "__session"
+mock_db_module.SESSION_TTL_SECONDS = 3600
+mock_db_module.store_session = AsyncMock()
+mock_db_module.get_session = AsyncMock()
+mock_db_module.delete_session = AsyncMock()
+mock_db_module.build_session_payload = MagicMock()
 
-# ----------------- Tests -----------------
+sys.modules["src.server_comps.database"] = mock_db_module
+sys.modules["src.database"] = mock_db_module
 
-def test_login_existing_user(load_app_with_env):
-    appmod, client, _ = load_app_with_env
-    uid = "67890"
-    email = "existing@example.com"
-    fake_profile = {"name": "Existing User", "email": email, "questions": [True, False, True]}
+# Add parent directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-    with patch("src.server_comps.server.id_token.verify_oauth2_token") as mock_verify, \
-         patch("src.server_comps.server.db") as mock_db, \
-         patch("src.server_comps.server.redis_client") as mock_redis:
+from src.server_comps.server import app, SESSION_COOKIE_NAME
 
-        # Patch Google verification
-        mock_verify.return_value = {"sub": uid, "email": email, "name": "Existing User"}
 
-        # Patch Firestore
-        fake_doc = MagicMock()
-        fake_doc.exists = True
-        fake_doc.to_dict.return_value = fake_profile
-        mock_db.collection.return_value.document.return_value.get.return_value = fake_doc
+client = TestClient(app)
 
-        # Patch Redis with all required async operations
-        mock_redis.hset = AsyncMock(return_value=True)
-        mock_redis.expire = AsyncMock(return_value=True)
-        mock_redis.hgetall = AsyncMock(return_value={})
-        mock_redis.get = AsyncMock(return_value=None)
-        mock_redis.set = AsyncMock(return_value=True)
-
-        # Call endpoint
-        response = client.post("/api/auth/login", json={"token": "FAKE_TOKEN", "recaptchaToken": "test-token"})
-
-        # Assertions
+class TestLoginEndpoint:
+    """Test the Google OAuth login endpoint via Controller Logic"""
+    
+    @patch("src.server_comps.server.auth_manager.login", new_callable=AsyncMock)
+    def test_login_existing_user(self, mock_login):
+        """Test successful Google login delegation"""
+        
+        # --- SETUP MOCK ---
+        fake_uid = "67890"
+        fake_email = "existing@example.com"
+        fake_name = "Existing User"
+        
+        # The manager returns a dict with user info and token
+        fake_response = {
+            "user": {
+                "uid": fake_uid,
+                "name": fake_name,
+                "email": fake_email,
+                "is_admin": False
+            },
+            "token": "fake-google-session-token",
+            "msg": "User Exists"
+        }
+        mock_login.return_value = fake_response
+        
+        # --- EXECUTE ---
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "token": "FAKE_GOOGLE_TOKEN",
+                "recaptchaToken": "test-token"
+            }
+        )
+        
+        # --- ASSERTIONS ---
         assert response.status_code == 200
         data = response.json()
+        
         assert data["msg"] == "User Exists"
-        assert data["user"]["uid"] == uid
-        assert data["user"]["name"] == fake_profile["name"]
-        assert data["user"]["email"] == fake_profile["email"]
+        assert data["user"]["uid"] == fake_uid
+        assert data["user"]["name"] == fake_name
+        assert data["user"]["email"] == fake_email
+        
+        # Check that session cookie was set
+        assert SESSION_COOKIE_NAME in response.cookies
+        assert response.cookies[SESSION_COOKIE_NAME] == "fake-google-session-token"
+        
+        # Verify manager was called with correct dict
+        mock_login.assert_called_once()
+        call_args = mock_login.call_args[0][0] # First arg is data dict
+        assert call_args["token"] == "FAKE_GOOGLE_TOKEN"
 
-        # Session cookie check
-        cookie = response.cookies.get(appmod.SESSION_COOKIE_NAME)
-        assert cookie is not None
-        assert len(cookie) > 0
+    @patch("src.server_comps.server.auth_manager.login", new_callable=AsyncMock)
+    def test_login_new_user(self, mock_login):
+        """Test successful first-time Google login (Sign Up flow)"""
+        
+        fake_response = {
+            "user": {
+                "uid": "new-google-uid",
+                "name": "New User",
+                "email": "new@example.com",
+                "is_admin": False
+            },
+            "token": "new-session-token",
+            "msg": "New user created"
+        }
+        mock_login.return_value = fake_response
+        
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "token": "NEW_GOOGLE_TOKEN",
+                "recaptchaToken": "test-token"
+            }
+        )
+        
+        assert response.status_code == 200
+        assert response.json()["msg"] == "New user created"
+        assert response.cookies[SESSION_COOKIE_NAME] == "new-session-token"
+
+    @patch("src.server_comps.server.auth_manager.login", new_callable=AsyncMock)
+    def test_login_invalid_token(self, mock_login):
+        """Test login failure due to invalid Google token"""
+        
+        mock_login.side_effect = HTTPException(status_code=401, detail="Invalid token")
+        
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "token": "INVALID_TOKEN",
+                "recaptchaToken": "test-token"
+            }
+        )
+        
+        assert response.status_code == 401
+        assert "Invalid token" in response.json()["detail"]
+
+    @patch("src.server_comps.server.auth_manager.login", new_callable=AsyncMock)
+    def test_login_recaptcha_failure(self, mock_login):
+        """Test login failure due to reCAPTCHA"""
+        
+        mock_login.side_effect = HTTPException(status_code=400, detail="reCAPTCHA verification failed")
+        
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "token": "VALID_TOKEN",
+                "recaptchaToken": "bad-recaptcha"
+            }
+        )
+        
+        assert response.status_code == 400
+        assert "reCAPTCHA" in response.json()["detail"]

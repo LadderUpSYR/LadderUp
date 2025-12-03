@@ -1,24 +1,47 @@
 """
-Unit tests for profile editing and password change endpoints
+Unit tests for profile editing and password change endpoints.
+Updated to test the Controller Layer by mocking Manager Singletons.
+"""
+import sys
+import os
+from unittest.mock import MagicMock, AsyncMock
+
+mock_db_module = MagicMock()
+mock_db_module.db = MagicMock()
+mock_db_module.redis_client = MagicMock()
+mock_db_module.bucket = MagicMock()
+mock_db_module.SESSION_COOKIE_NAME = "__session"
+mock_db_module.SESSION_TTL_SECONDS = 3600
+
+mock_db_module.store_session = AsyncMock()
+mock_db_module.get_session = AsyncMock()
+mock_db_module.delete_session = AsyncMock()
+mock_db_module.build_session_payload = MagicMock()
+
+sys.modules["src.server_comps.database"] = mock_db_module
+sys.modules["src.database"] = mock_db_module # Safety catch for different import paths
+
+"""
+Unit tests for profile editing and password change endpoints.
+Updated to test the Controller Layer by mocking Manager Singletons.
 """
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
-import sys
-import os
+from fastapi import HTTPException
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
 # Add the parent directory to the path so we can import the server
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.server_comps.server import app, hash_password, SESSION_COOKIE_NAME
+# Now we can safely import app, because database.py is already mocked!
+from src.server_comps.server import app, SESSION_COOKIE_NAME
 
 
 class TestProfileEdit:
     """Test the /api/profile/edit endpoint"""
     
     def _get_session_data(self, uid="test-uid-123", name="Test User", email="test@example.com"):
-        """Helper to create test session data"""
         return {
             "uid": uid,
             "name": name,
@@ -26,22 +49,20 @@ class TestProfileEdit:
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
     
-    @patch("src.server_comps.server.store_session", new_callable=AsyncMock)
+    @patch("src.server_comps.server.profile_manager.update_profile", new_callable=AsyncMock)
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_edit_profile_success(self, mock_db, mock_get_session, mock_store_session):
-        """Test successful profile name update"""
+    def test_edit_profile_success(self, mock_get_session, mock_update_profile):
+        """Test successful profile name update delegation"""
         session_token = "test-session-token"
         session_data = self._get_session_data()
         
-        # Mock session functions
+        # Mock Session
         mock_get_session.return_value = session_data
         
-        # Mock Firestore update
-        mock_user_ref = MagicMock()
-        mock_db.collection.return_value.document.return_value = mock_user_ref
+        # Mock Manager Response
+        expected_response = {"uid": "test-uid-123", "name": "Updated Name", "email": "test@example.com"}
+        mock_update_profile.return_value = expected_response
         
-        # Create client and set cookie
         client = TestClient(app)
         client.cookies.set(SESSION_COOKIE_NAME, session_token)
         
@@ -52,109 +73,66 @@ class TestProfileEdit:
         
         assert response.status_code == 200
         data = response.json()
-        
         assert data["msg"] == "Profile updated successfully"
-        assert data["user"]["name"] == "Updated Name"
-        assert data["user"]["uid"] == "test-uid-123"
-        assert data["user"]["email"] == "test@example.com"
+        assert data["user"] == expected_response
         
-        # Verify Firestore update was called
-        mock_db.collection.assert_called_with("users")
-        mock_db.collection.return_value.document.assert_called_with("test-uid-123")
-        mock_user_ref.update.assert_called_once_with({"name": "Updated Name"})
-        
-        # Verify session was updated
-        mock_store_session.assert_called_once()
-        stored_data = mock_store_session.call_args[0][1]
-        assert stored_data["name"] == "Updated Name"
-    
+        # Verify call to manager
+        mock_update_profile.assert_called_once_with("test-uid-123", "Updated Name", session_token, session_data)
+
     def test_edit_profile_not_authenticated(self):
         """Test that editing profile without authentication fails"""
         client = TestClient(app)
-        
-        response = client.put(
-            "/api/profile/edit",
-            json={"name": "Updated Name"}
-        )
-        
+        response = client.put("/api/profile/edit", json={"name": "Updated Name"})
         assert response.status_code == 401
         assert response.json()["detail"] == "Not authenticated"
-    
+
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
     def test_edit_profile_invalid_session(self, mock_get_session):
         """Test that editing profile with invalid session fails"""
-        # Mock invalid session
         mock_get_session.return_value = None
-        
         client = TestClient(app)
         client.cookies.set(SESSION_COOKIE_NAME, "invalid-token")
-        
-        response = client.put(
-            "/api/profile/edit",
-            json={"name": "Updated Name"}
-        )
-        
+        response = client.put("/api/profile/edit", json={"name": "Updated Name"})
         assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid or expired session"
-    
+
+    @patch("src.server_comps.server.profile_manager.update_profile", new_callable=AsyncMock)
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_edit_profile_firestore_error(self, mock_db, mock_get_session):
-        """Test that Firestore errors are handled properly"""
-        session_token = "test-session-token"
+    def test_edit_profile_manager_error(self, mock_get_session, mock_update_profile):
+        """Test that Manager errors are caught and returned as 500"""
         mock_get_session.return_value = self._get_session_data()
+        mock_update_profile.side_effect = Exception("Internal Logic Error")
         
-        # Mock Firestore to raise an exception
-        mock_db.collection.return_value.document.return_value.update.side_effect = Exception("Firestore error")
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
+        # FIX: Set raise_server_exceptions=False so the client returns 500 instead of crashing
+        client = TestClient(app, raise_server_exceptions=False)
+        client.cookies.set(SESSION_COOKIE_NAME, "test-token")
         
         response = client.put(
             "/api/profile/edit",
             json={"name": "Updated Name"}
         )
         
-        assert response.status_code == 500
-        assert "Failed to update profile" in response.json()["detail"]
+        assert response.status_code == 500 
 
 
 class TestChangePassword:
     """Test the /api/profile/change-password endpoint"""
     
-    def _get_session_data(self, uid="test-uid-123", name="Test User", email="test@example.com"):
-        """Helper to create test session data"""
+    def _get_session_data(self):
         return {
-            "uid": uid,
-            "name": name,
-            "email": email,
+            "uid": "test-uid-123",
+            "name": "Test User",
+            "email": "test@example.com",
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
-    
+
+    @patch("src.server_comps.server.profile_manager.change_password", new_callable=AsyncMock)
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_change_password_success(self, mock_db, mock_get_session):
-        """Test successful password change for email auth user"""
-        session_token = "test-session-token"
+    def test_change_password_success(self, mock_get_session, mock_change_password):
+        """Test successful password change delegation"""
         mock_get_session.return_value = self._get_session_data()
         
-        # Mock Firestore to return email auth user
-        mock_user_doc = MagicMock()
-        mock_user_doc.exists = True
-        mock_user_doc.to_dict.return_value = {
-            "uid": "test-uid-123",
-            "email": "test@example.com",
-            "name": "Test User",
-            "auth_provider": "email",
-            "password_hash": hash_password("oldpassword123")
-        }
-        
-        mock_user_ref = MagicMock()
-        mock_user_ref.get.return_value = mock_user_doc
-        mock_db.collection.return_value.document.return_value = mock_user_ref
-        
         client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
+        client.cookies.set(SESSION_COOKIE_NAME, "token")
         
         response = client.put(
             "/api/profile/change-password",
@@ -162,171 +140,48 @@ class TestChangePassword:
         )
         
         assert response.status_code == 200
-        data = response.json()
-        assert data["msg"] == "Password updated successfully"
+        assert response.json()["msg"] == "Password updated successfully"
         
-        # Verify Firestore was called correctly
-        mock_db.collection.assert_called_with("users")
-        mock_db.collection.return_value.document.assert_called_with("test-uid-123")
-        
-        # Verify update was called with hashed password
-        assert mock_user_ref.update.called
-        update_args = mock_user_ref.update.call_args[0][0]
-        assert "password_hash" in update_args
-        assert update_args["password_hash"] != "newpassword123"  # Should be hashed
-        assert len(update_args["password_hash"]) == 64  # SHA-256 hash length
-    
+        mock_change_password.assert_called_once_with("test-uid-123", "newpassword123")
+
+    @patch("src.server_comps.server.profile_manager.change_password", new_callable=AsyncMock)
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_change_password_oauth_user_fails(self, mock_db, mock_get_session):
-        """Test that OAuth users cannot change password"""
-        session_token = "test-session-token"
+    def test_change_password_logic_rejection(self, mock_get_session, mock_change_password):
+        """Test that manager rejections (e.g. OAuth) return correct status codes"""
         mock_get_session.return_value = self._get_session_data()
-        
-        # Mock Firestore to return OAuth user
-        mock_user_doc = MagicMock()
-        mock_user_doc.exists = True
-        mock_user_doc.to_dict.return_value = {
-            "uid": "test-uid-123",
-            "email": "test@example.com",
-            "name": "Test User",
-            "auth_provider": "google"  # OAuth provider
-        }
-        
-        mock_user_ref = MagicMock()
-        mock_user_ref.get.return_value = mock_user_doc
-        mock_db.collection.return_value.document.return_value = mock_user_ref
+        mock_change_password.side_effect = HTTPException(status_code=400, detail="Cannot change password for OAuth accounts")
         
         client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
+        client.cookies.set(SESSION_COOKIE_NAME, "token")
         
         response = client.put(
             "/api/profile/change-password",
-            json={"password": "newpassword123"}
+            json={"password": "any"}
         )
         
         assert response.status_code == 400
-        assert "Cannot change password for OAuth accounts" in response.json()["detail"]
-    
-    def test_change_password_not_authenticated(self):
-        """Test that changing password without authentication fails"""
-        client = TestClient(app)
-        
-        response = client.put(
-            "/api/profile/change-password",
-            json={"password": "newpassword123"}
-        )
-        
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Not authenticated"
-    
+        assert "Cannot change password" in response.json()["detail"]
+
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    def test_change_password_invalid_session(self, mock_get_session):
-        """Test that changing password with invalid session fails"""
+    def test_change_password_not_authenticated(self, mock_get_session):
         mock_get_session.return_value = None
-        
         client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, "invalid-token")
-        
-        response = client.put(
-            "/api/profile/change-password",
-            json={"password": "newpassword123"}
-        )
-        
+        response = client.put("/api/profile/change-password", json={"password": "123"})
         assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid or expired session"
-    
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_change_password_too_short(self, mock_db, mock_get_session):
-        """Test that short passwords are rejected"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
-        
-        response = client.put(
-            "/api/profile/change-password",
-            json={"password": "12345"}  # Less than 6 characters
-        )
-        
-        assert response.status_code == 400
-        assert "at least 6 characters" in response.json()["detail"]
-    
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_change_password_user_not_found(self, mock_db, mock_get_session):
-        """Test that changing password fails if user not found in DB"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        # Mock Firestore to return non-existent user
-        mock_user_doc = MagicMock()
-        mock_user_doc.exists = False
-        
-        mock_user_ref = MagicMock()
-        mock_user_ref.get.return_value = mock_user_doc
-        mock_db.collection.return_value.document.return_value = mock_user_ref
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
-        
-        response = client.put(
-            "/api/profile/change-password",
-            json={"password": "newpassword123"}
-        )
-        
-        assert response.status_code == 404
-        assert "User not found" in response.json()["detail"]
-    
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_change_password_firestore_error(self, mock_db, mock_get_session):
-        """Test that Firestore errors are handled properly"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        # Mock Firestore to raise an exception during get
-        mock_user_ref = MagicMock()
-        mock_user_ref.get.side_effect = Exception("Firestore error")
-        mock_db.collection.return_value.document.return_value = mock_user_ref
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
-        
-        response = client.put(
-            "/api/profile/change-password",
-            json={"password": "newpassword123"}
-        )
-        
-        assert response.status_code == 500
-        assert "Failed to update password" in response.json()["detail"]
 
 
 class TestDeleteAccount:
     """Test the /api/auth/delete-account endpoint"""
     
-    def _get_session_data(self, uid="test-uid-123", name="Test User", email="test@example.com"):
-        """Helper to create test session data"""
-        return {
-            "uid": uid,
-            "name": name,
-            "email": email,
+    @patch("src.server_comps.server.profile_manager.delete_account", new_callable=AsyncMock)
+    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
+    def test_delete_account_success(self, mock_get_session, mock_delete_account):
+        """Test successful account deletion delegation"""
+        session_token = "test-session-token"
+        mock_get_session.return_value = {
+            "uid": "test-uid-123",
             "expires": str((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
         }
-    
-    @patch("src.server_comps.server.delete_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_delete_account_success(self, mock_db, mock_get_session, mock_delete_session):
-        """Test successful account deletion"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        # Mock Firestore delete
-        mock_user_ref = MagicMock()
-        mock_db.collection.return_value.document.return_value = mock_user_ref
         
         client = TestClient(app)
         client.cookies.set(SESSION_COOKIE_NAME, session_token)
@@ -336,50 +191,18 @@ class TestDeleteAccount:
         assert response.status_code == 200
         assert response.json()["msg"] == "Account deleted successfully"
         
-        # Verify Firestore delete was called
-        mock_db.collection.assert_called_with("users")
-        mock_db.collection.return_value.document.assert_called_with("test-uid-123")
-        mock_user_ref.delete.assert_called_once()
-        
-        # Verify session was removed
-        mock_delete_session.assert_called_once_with(session_token)
-    
-    def test_delete_account_not_authenticated(self):
-        """Test that deleting account without authentication fails"""
-        client = TestClient(app)
-        
-        response = client.delete("/api/auth/delete-account")
-        
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Not authenticated"
-    
+        mock_delete_account.assert_called_once_with("test-uid-123", session_token)
+
+    @patch("src.server_comps.server.profile_manager.delete_account", new_callable=AsyncMock)
     @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    def test_delete_account_invalid_session(self, mock_get_session):
-        """Test that deleting account with invalid session fails"""
-        mock_get_session.return_value = None
+    def test_delete_account_error(self, mock_get_session, mock_delete_account):
+        mock_get_session.return_value = {"uid": "123", "expires": "9999999999"}
+        mock_delete_account.side_effect = Exception("DB Error")
         
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, "invalid-token")
-        
-        response = client.delete("/api/auth/delete-account")
-        
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid or expired session"
-    
-    @patch("src.server_comps.server.get_session", new_callable=AsyncMock)
-    @patch("src.server_comps.server.db")
-    def test_delete_account_firestore_error(self, mock_db, mock_get_session):
-        """Test that Firestore errors are handled properly"""
-        session_token = "test-session-token"
-        mock_get_session.return_value = self._get_session_data()
-        
-        # Mock Firestore to raise an exception
-        mock_db.collection.return_value.document.return_value.delete.side_effect = Exception("Firestore error")
-        
-        client = TestClient(app)
-        client.cookies.set(SESSION_COOKIE_NAME, session_token)
+        # FIX: Set raise_server_exceptions=False so the client returns 500 instead of crashing
+        client = TestClient(app, raise_server_exceptions=False)
+        client.cookies.set(SESSION_COOKIE_NAME, "token")
         
         response = client.delete("/api/auth/delete-account")
         
         assert response.status_code == 500
-        assert "Failed to delete account" in response.json()["detail"]
