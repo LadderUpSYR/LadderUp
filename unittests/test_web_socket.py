@@ -16,19 +16,17 @@ if str(SRC) not in sys.path:
 # ------------------ Tests ------------------
 @pytest.mark.asyncio
 async def test_ws_missing_session_token(load_ws_app):
-    """Test WebSocket rejects connection without session token"""
+    """Test WebSocket rejects connection without auth token (timeout)"""
     app, SESSION_COOKIE_NAME, _ = load_ws_app
     
-    mock_ws = MockWebSocket(cookies={})
+    # No auth_token provided - will timeout waiting for authenticate message
+    mock_ws = MockWebSocket()
     
     with patch("src.server_comps.websocketserver.websocket", mock_ws):
         from src.server_comps.websocketserver import join_websocket
         await join_websocket()
     
-    # Should send error and close
-    assert len(mock_ws.sent_messages) == 1
-    error_msg = json.loads(mock_ws.sent_messages[0])
-    assert error_msg["error"] == "Missing session token"
+    # Should close with 1008 due to timeout
     assert mock_ws.closed is True
     assert mock_ws.close_code == 1008
 
@@ -37,7 +35,8 @@ async def test_ws_invalid_session_token(load_ws_app):
     """Test WebSocket rejects connection with invalid session"""
     app, SESSION_COOKIE_NAME, _ = load_ws_app
     
-    mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "invalid_token"})
+    # Provide auth token but session lookup returns None
+    mock_ws = MockWebSocket(auth_token="invalid_token")
     
     with patch("src.server_comps.websocketserver.websocket", mock_ws), \
          patch("src.server_comps.websocketserver.get_session", AsyncMock(return_value=None)):
@@ -59,7 +58,7 @@ async def test_ws_enqueues_player_successfully(load_ws_app):
     
     user_id = "user123"
     session_data = {"uid": user_id, "name": "Test User", "email": "test@example.com"}
-    mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
+    mock_ws = MockWebSocket(auth_token="valid_token")
     
     # Track queue length at specific point
     queue_snapshot = {"length": 0}
@@ -105,7 +104,7 @@ async def test_ws_match_found_partner_ordering(load_ws_app):
     user_id = "user789"
     partner_id = "user321"
     session_data = {"uid": user_id, "name": "Test User", "email": "test@example.com"}
-    mock_ws = MockWebSocket(cookies={SESSION_COOKIE_NAME: "valid_token"})
+    mock_ws = MockWebSocket(auth_token="valid_token")
 
     # Mock the MatchRoom object to be returned
     mock_room = MagicMock()

@@ -7,6 +7,8 @@ that's used across multiple test files to avoid duplication.
 
 import os
 import sys
+import json
+import asyncio
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -120,7 +122,8 @@ class MockRedisClient:
 
     async def lpop(self, key):
         if key in self.lists and self.lists[key]:
-            return self.lists[key].pop(0).encode()
+            # Return string (not bytes) to match decode_responses=True behavior
+            return self.lists[key].pop(0)
         return None
 
     async def lrem(self, key, count, value):
@@ -213,12 +216,15 @@ class MockPubSub:
 
 class MockWebSocket:
     """Mock WebSocket for testing"""
-    def __init__(self, cookies=None):
+    def __init__(self, cookies=None, auth_token=None, auth_message=None):
         self.cookies = cookies or {}
+        self.auth_token = auth_token
+        self.auth_message = auth_message  # Custom first message to send
         self.sent_messages = []
         self.closed = False
         self.close_code = None
         self.accepted = False
+        self._receive_called = False
 
     async def send(self, message):
         self.sent_messages.append(message)
@@ -229,6 +235,20 @@ class MockWebSocket:
     async def close(self, code=1000):
         self.closed = True
         self.close_code = code
+
+    async def receive(self):
+        """Mock receive - returns auth message on first call"""
+        if not self._receive_called:
+            self._receive_called = True
+            if self.auth_message is not None:
+                return self.auth_message
+            elif self.auth_token is not None:
+                return json.dumps({"type": "authenticate", "token": self.auth_token})
+            else:
+                # No auth provided - simulate timeout
+                raise asyncio.TimeoutError()
+        # Subsequent calls block forever
+        await asyncio.Event().wait()
 
 
 # ==================== FIXTURES ====================
