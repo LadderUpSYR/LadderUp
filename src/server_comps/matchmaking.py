@@ -13,7 +13,7 @@ MATCH_QUEUE = "match_queue"
 MATCH_CHANNEL = "match_channel"
 from .match_room import create_match_room
 
-
+# Add a player to the matchmaking queue
 async def enqueue_player(user_id):
     await redis_client.rpush(MATCH_QUEUE, user_id)
 
@@ -21,6 +21,13 @@ async def dequeue_player(user_id):
     """Remove a player from the matchmaking queue"""
     await redis_client.lrem(MATCH_QUEUE, 0, user_id)
 
+# Try to match players in the queue
+# Process:
+#    1. Check if at least 2 players are in the queue
+#    2. Pop the first 2 players (FIFO order)
+#    3. Create a match room for them
+#    4. Publish a match event so clients can be notified
+#    5. If room creation fails, re-queue the players
 async def try_match_players():
     try:
         # Check queue size first to avoid unnecessary pops
@@ -49,6 +56,10 @@ async def try_match_players():
         p2_uid = p2
 
         print(f"DEBUG: Matched pair: {p1_uid} and {p2_uid}")
+        # Match found; match creation hook needs to be implemented
+        # Create a game session p1 p2 timestamp
+        # Generate a unique match ID using player IDs and current timestamp
+        # Using Redis TIME command ensures consistent timing across distributed systems
 
         # Create Match ID
         redis_time = await redis_client.time()

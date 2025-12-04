@@ -324,6 +324,7 @@ class SubmitAnswerRequest(BaseModel, LoggableEvent):
     question: str
     answer: str
     answerCriteria: Optional[str] = None
+    videoAnalytics: Optional[dict] = None  # Optional video tracking metrics
 
     def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
         ip_address = "system"
@@ -369,10 +370,44 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         # 1. Use the middleware to handle Grading + Database Saving
         # This replaces the manual grader initialization and DB update logic
         data.log(request, uuid=uid)
-        answer_record = await answer_to_db_middleware(
+        # Grade the answer using LLM
+        from src.server_comps.llm_grading import get_grader
+        from src.utils.yamlparser import Question
+        
+        # Fetch question details from database to get metadata if available
+        question_ref = db.collection("questions").document(str(data.questionId))
+        question_doc = question_ref.get()
+        
+        # Create a Question object for the grader
+        if question_doc.exists:
+            q_data = question_doc.to_dict()
+            question_obj = Question(
+                id=0,  # ID not used in grading
+                question=data.question,
+                answer_criteria=q_data.get("answerCriteria", data.answerCriteria or ""),
+                passing_score=q_data.get("passingScore", 0.0),
+                avg_score=q_data.get("avgScore", 1.0),
+                num_attempts=q_data.get("numAttempts", 0),
+                metadata_yaml=q_data.get("metadata_yaml", None)
+            )
+        else:
+            # Fallback if question not found in DB
+            question_obj = Question(
+                id=0,  # ID not used in grading
+                question=data.question,
+                answer_criteria=data.answerCriteria or "",
+                passing_score=0.0,
+                avg_score=1.0,
+                num_attempts=0,
+                metadata_yaml=None
+            )
+        
+        grader = get_grader()
+        grading_result = grader.grade_answer(
+            question=question_obj,
             answer=data.answer,
-            question_id=data.questionId,
-            player_uuid=uid
+            player_uuid=None,  # No player UUID for practice mode
+            video_analytics=data.videoAnalytics  # Pass video analytics to grader
         )
 
         # 2. Fetch User Data for 'total_answered' count
@@ -381,10 +416,45 @@ async def submit_answer(request: Request, data: SubmitAnswerRequest):
         user_doc = user_ref.get()
         total_answered = 0
         
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            answered_questions = user_data.get("answered_questions", [])
-            total_answered = len(answered_questions)
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        answered_questions = user_data.get("answered_questions", [])
+
+        # Create new answer record with LLM grading
+        answer_record = {
+            "questionId": data.questionId,
+            "question": data.question,
+            "answer": data.answer,
+            "score": grading_result["score"],
+            "feedback": grading_result["feedback"],
+            "strengths": grading_result["strengths"],
+            "improvements": grading_result["improvements"],
+            "date": datetime.now(timezone.utc).isoformat(),
+            "gradedBy": "gemini-ai"
+        }
+        
+        # Include video metrics if provided
+        if data.videoAnalytics:
+            answer_record["videoMetrics"] = data.videoAnalytics
+
+        # Check if question was already answered - update with latest score
+        existing_index = None
+        for i, q in enumerate(answered_questions):
+            if q.get("questionId") == data.questionId:
+                existing_index = i
+                break
+        
+        if existing_index is not None:
+            # Update existing answer with new score (keeping history of most recent attempt)
+            answered_questions[existing_index] = answer_record
+        else:
+            # Add new answer
+            answered_questions.append(answer_record)
+
+        # Update user profile
+        user_ref.update({"answered_questions": answered_questions})
 
         # 3. Return response matching the original API contract
         return {

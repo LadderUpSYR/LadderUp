@@ -2,23 +2,38 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 
 /**
- * Custom hook for video capture with face tracking in practice mode
- * Tracks attention score and emotion during recording
- * Provides aggregate metrics for grading
+ * Custom hook for video capture with face tracking in match rooms
+ * Adapted from usePracticeVideoCapture for multiplayer context
+ * 
+ * Key differences from practice mode:
+ * - Sends facial tracking data through WebSocket to opponent
+ * - Receives and displays opponent's facial tracking data
+ * - Optimized for dual-user scenarios
  */
-export function usePracticeVideoCapture() {
+export function useMatchVideoCapture(wsRef) {
   const [isVideoReady, setIsVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [faceLandmarker, setFaceLandmarker] = useState(null);
   const [isTracking, setIsTracking] = useState(false);
   
-  // Real-time tracking state
+  // Real-time tracking state for current player
   const [currentAttention, setCurrentAttention] = useState({
     isLookingAtCamera: false,
     attentionScore: 0,
     gazeDirection: 'Center'
   });
   const [currentEmotion, setCurrentEmotion] = useState({
+    emotion: 'Neutral',
+    confidence: 0
+  });
+  
+  // Opponent's facial tracking data (received via WebSocket)
+  const [opponentAttention, setOpponentAttention] = useState({
+    isLookingAtCamera: false,
+    attentionScore: 0,
+    gazeDirection: 'Center'
+  });
+  const [opponentEmotion, setOpponentEmotion] = useState({
     emotion: 'Neutral',
     confidence: 0
   });
@@ -34,7 +49,11 @@ export function usePracticeVideoCapture() {
   const attentionScoresRef = useRef([]);
   const emotionDataRef = useRef([]);
   const trackingStartTimeRef = useRef(null);
-  const isTrackingRef = useRef(false);  // Ref to track current tracking state for processFrame
+  const isTrackingRef = useRef(false);
+  
+  // WebSocket data sending interval
+  const sendIntervalRef = useRef(null);
+  const lastSentDataRef = useRef(null);
 
   // Initialize MediaPipe Face Landmarker
   useEffect(() => {
@@ -57,7 +76,7 @@ export function usePracticeVideoCapture() {
         
         faceLandmarkerRef.current = landmarker;
         setFaceLandmarker(landmarker);
-        console.log('Face Landmarker initialized for practice mode');
+        console.log('Face Landmarker initialized for match mode');
       } catch (err) {
         console.error('Error initializing Face Landmarker:', err);
         setVideoError('Failed to initialize face tracking. Please refresh the page.');
@@ -71,6 +90,50 @@ export function usePracticeVideoCapture() {
         faceLandmarkerRef.current.close();
       }
     };
+  }, []);
+
+  /**
+   * Send facial tracking data through WebSocket
+   */
+  const sendFacialData = useCallback((attentionData, emotionData) => {
+    if (wsRef?.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const data = {
+        type: 'facial_tracking',
+        attention: {
+          isLookingAtCamera: attentionData.isLookingAtCamera,
+          attentionScore: attentionData.attentionScore,
+          gazeDirection: attentionData.gazeDirection
+        },
+        emotion: {
+          emotion: emotionData.emotion,
+          confidence: emotionData.confidence
+        },
+        timestamp: Date.now()
+      };
+      
+      // Only send if data has changed significantly
+      const shouldSend = !lastSentDataRef.current ||
+        Math.abs(lastSentDataRef.current.attention.attentionScore - attentionData.attentionScore) > 5 ||
+        lastSentDataRef.current.emotion.emotion !== emotionData.emotion ||
+        lastSentDataRef.current.attention.isLookingAtCamera !== attentionData.isLookingAtCamera;
+      
+      if (shouldSend) {
+        wsRef.current.send(JSON.stringify(data));
+        lastSentDataRef.current = data;
+      }
+    }
+  }, [wsRef]);
+
+  /**
+   * Handle incoming facial tracking data from opponent
+   */
+  const handleOpponentFacialData = useCallback((data) => {
+    if (data.attention) {
+      setOpponentAttention(data.attention);
+    }
+    if (data.emotion) {
+      setOpponentEmotion(data.emotion);
+    }
   }, []);
 
   /**
@@ -114,18 +177,18 @@ export function usePracticeVideoCapture() {
    */
   const calculateEyeGaze = useCallback((landmarks) => {
     // Left eye landmarks
-    const leftEyeCenter = landmarks[468]; // Left iris center
-    const leftEyeLeft = landmarks[33];    // Left eye left corner
-    const leftEyeRight = landmarks[133];  // Left eye right corner
-    const leftEyeTop = landmarks[159];    // Left eye top
-    const leftEyeBottom = landmarks[145]; // Left eye bottom
+    const leftEyeCenter = landmarks[468];
+    const leftEyeLeft = landmarks[33];
+    const leftEyeRight = landmarks[133];
+    const leftEyeTop = landmarks[159];
+    const leftEyeBottom = landmarks[145];
     
     // Right eye landmarks
-    const rightEyeCenter = landmarks[473]; // Right iris center
-    const rightEyeLeft = landmarks[362];   // Right eye left corner
-    const rightEyeRight = landmarks[263];  // Right eye right corner
-    const rightEyeTop = landmarks[386];    // Right eye top
-    const rightEyeBottom = landmarks[374]; // Right eye bottom
+    const rightEyeCenter = landmarks[473];
+    const rightEyeLeft = landmarks[362];
+    const rightEyeRight = landmarks[263];
+    const rightEyeTop = landmarks[386];
+    const rightEyeBottom = landmarks[374];
     
     // Calculate left eye gaze
     const leftEyeWidth = Math.abs(leftEyeRight.x - leftEyeLeft.x);
@@ -143,10 +206,8 @@ export function usePracticeVideoCapture() {
     const avgHorizontalRatio = (leftHorizontalRatio + rightHorizontalRatio) / 2;
     const avgVerticalRatio = (leftVerticalRatio + rightVerticalRatio) / 2;
     
-    // Calculate gaze deviation from center (0.5, 0.5)
-    // Balanced sensitivity for eye movements
-    const horizontalGaze = (avgHorizontalRatio - 0.5) * 80; // -40 to +40 degrees
-    const verticalGaze = (avgVerticalRatio - 0.5) * 60;     // -30 to +30 degrees
+    const horizontalGaze = (avgHorizontalRatio - 0.5) * 80;
+    const verticalGaze = (avgVerticalRatio - 0.5) * 60;
     
     return { horizontalGaze, verticalGaze };
   }, []);
@@ -163,24 +224,19 @@ export function usePracticeVideoCapture() {
 
     const faceCenterX = (leftEye.x + rightEye.x) / 2;
 
-    // Calculate yaw (left-right head rotation)
     const eyeDistance = Math.abs(rightEye.x - leftEye.x);
     const noseOffset = noseTip.x - faceCenterX;
     const yaw = (noseOffset / eyeDistance) * 90;
 
-    // Calculate pitch (up-down head tilt)
     const foreheadDist = Math.abs(noseTip.y - forehead.y);
     const chinDist = Math.abs(chin.y - noseTip.y);
     const pitch = ((foreheadDist - chinDist) / (foreheadDist + chinDist)) * 90;
 
-    // Calculate eye gaze direction
     const eyeGaze = calculateEyeGaze(landmarks);
     
-    // Combine head orientation and eye gaze for total gaze direction
     const totalHorizontalGaze = yaw + eyeGaze.horizontalGaze;
     const totalVerticalGaze = pitch + eyeGaze.verticalGaze;
 
-    // Determine gaze direction - balanced thresholds
     let gazeDirection = 'Center';
     if (Math.abs(totalHorizontalGaze) > 22) {
       gazeDirection = totalHorizontalGaze > 0 ? 'Left' : 'Right';
@@ -188,13 +244,10 @@ export function usePracticeVideoCapture() {
       gazeDirection = totalVerticalGaze > 0 ? 'Down' : 'Up';
     }
 
-    // Calculate attention score (0-100)
-    // Balanced penalties - noticeable but not overly harsh
     const horizontalPenalty = Math.min(Math.abs(totalHorizontalGaze) / 40, 1);
     const verticalPenalty = Math.min(Math.abs(totalVerticalGaze) / 35, 1);
     const attentionScore = Math.max(0, 100 - (horizontalPenalty * 55 + verticalPenalty * 45));
 
-    // Consider "looking at camera" if attention score > 72
     const isLookingAtCamera = attentionScore > 72;
 
     return {
@@ -221,7 +274,6 @@ export function usePracticeVideoCapture() {
       return shape ? shape.score : 0;
     };
 
-    // Get relevant blendshapes
     const smileLeft = getBlendshapeValue('mouthSmileLeft');
     const smileRight = getBlendshapeValue('mouthSmileRight');
     const mouthFrownLeft = getBlendshapeValue('mouthFrownLeft');
@@ -240,7 +292,6 @@ export function usePracticeVideoCapture() {
     const cheekSquintLeft = getBlendshapeValue('cheekSquintLeft');
     const cheekSquintRight = getBlendshapeValue('cheekSquintRight');
 
-    // Calculate eye and mouth ratios
     const leftEyeIndices = [33, 160, 158, 133, 153, 144];
     const rightEyeIndices = [362, 385, 387, 263, 373, 380];
     const leftEAR = calculateEAR(landmarks, leftEyeIndices);
@@ -248,7 +299,6 @@ export function usePracticeVideoCapture() {
     const avgEAR = (leftEAR + rightEAR) / 2;
     const mar = calculateMAR(landmarks);
 
-    // Calculate emotion scores
     const avgSmile = (smileLeft + smileRight) / 2;
     const avgFrown = (mouthFrownLeft + mouthFrownRight) / 2;
     const avgEyeWide = (eyeWideLeft + eyeWideRight) / 2;
@@ -287,7 +337,6 @@ export function usePracticeVideoCapture() {
       'Neutral': 0
     };
 
-    // Calculate neutral as inverse of other emotions
     const maxOtherEmotion = Math.max(
       emotions.Happy,
       emotions.Sad,
@@ -297,7 +346,6 @@ export function usePracticeVideoCapture() {
     
     emotions.Neutral = Math.max(0, 1 - maxOtherEmotion * 1.5);
 
-    // Apply thresholds
     const threshold = 0.12;
     const surprisedThreshold = 0.25;
     Object.keys(emotions).forEach(key => {
@@ -307,7 +355,6 @@ export function usePracticeVideoCapture() {
       }
     });
 
-    // Find max emotion
     let maxEmotion = 'Neutral';
     let maxConfidence = emotions.Neutral;
 
@@ -328,7 +375,6 @@ export function usePracticeVideoCapture() {
 
   /**
    * Process video frame for face tracking
-   * This is NOT a useCallback - it needs to recursively call itself
    */
   const processFrame = () => {
     if (!faceLandmarkerRef.current || !videoRef.current || !canvasRef.current) {
@@ -339,25 +385,19 @@ export function usePracticeVideoCapture() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
-    // Check if video has valid dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
       animationFrameRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
-    // Set canvas size to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
     try {
-      // Detect face landmarks
       const startTimeMs = performance.now();
       const results = faceLandmarkerRef.current.detectForVideo(video, startTimeMs);
 
-      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw video frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       if (results.faceLandmarks && results.faceLandmarks.length > 0) {
@@ -366,15 +406,18 @@ export function usePracticeVideoCapture() {
           ? results.faceBlendshapes[0].categories 
           : [];
 
-        // Calculate metrics
         const attentionData = calculateAttention(landmarks);
         const emotionData = detectEmotion(landmarks, blendshapes);
 
-        // Update current state
         setCurrentAttention(attentionData);
         setCurrentEmotion(emotionData);
 
-        // Accumulate data for aggregate metrics (only if tracking is active)
+        // Send data through WebSocket (throttled in sendFacialData)
+        if (isTrackingRef.current) {
+          sendFacialData(attentionData, emotionData);
+        }
+
+        // Accumulate data for aggregate metrics
         if (isTrackingRef.current) {
           attentionScoresRef.current.push(attentionData.attentionScore);
           emotionDataRef.current.push({
@@ -388,7 +431,6 @@ export function usePracticeVideoCapture() {
       console.error('Error processing frame:', err);
     }
 
-    // Continue processing
     animationFrameRef.current = requestAnimationFrame(processFrame);
   };
 
@@ -398,32 +440,25 @@ export function usePracticeVideoCapture() {
   const startVideo = useCallback(async () => {
     try {
       setVideoError(null);
-      console.log('Requesting camera access...');
+      console.log('Requesting camera access for match...');
       
-      // Get camera access
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480 }
       });
       
-      console.log('Camera access granted, stream tracks:', stream.getTracks().length);
+      console.log('Camera access granted');
       streamRef.current = stream;
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        console.log('Video srcObject set');
         
         const onLoadedMetadata = () => {
-          console.log('Video metadata loaded:', {
-            videoWidth: videoRef.current.videoWidth,
-            videoHeight: videoRef.current.videoHeight,
-            readyState: videoRef.current.readyState
-          });
+          console.log('Video metadata loaded');
           
           videoRef.current.play().then(() => {
             setIsVideoReady(true);
             console.log('Video playing, starting frame processing...');
             
-            // Start processing frames
             setTimeout(() => {
               processFrame();
             }, 100);
@@ -434,14 +469,10 @@ export function usePracticeVideoCapture() {
         };
 
         if (videoRef.current.readyState >= 2) {
-          console.log('Video ready immediately');
           onLoadedMetadata();
         } else {
-          console.log('Waiting for video metadata...');
           videoRef.current.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
         }
-      } else {
-        console.error('videoRef.current is null');
       }
     } catch (err) {
       console.error('Error accessing camera:', err);
@@ -450,7 +481,7 @@ export function usePracticeVideoCapture() {
   }, []);
 
   /**
-   * Start face tracking (separate from video start)
+   * Start face tracking
    */
   const startTracking = useCallback(() => {
     if (!isVideoReady || !faceLandmarkerRef.current) {
@@ -458,15 +489,15 @@ export function usePracticeVideoCapture() {
       return;
     }
 
-    // Reset tracking data
     attentionScoresRef.current = [];
     emotionDataRef.current = [];
     trackingStartTimeRef.current = performance.now();
+    lastSentDataRef.current = null;
     
     setIsTracking(true);
-    isTrackingRef.current = true;  // Update ref for processFrame
+    isTrackingRef.current = true;
     
-    console.log('Face tracking started');
+    console.log('Face tracking started for match');
   }, [isVideoReady]);
 
   /**
@@ -474,7 +505,7 @@ export function usePracticeVideoCapture() {
    */
   const stopTracking = useCallback(() => {
     setIsTracking(false);
-    isTrackingRef.current = false;  // Update ref for processFrame
+    isTrackingRef.current = false;
     console.log('Face tracking stopped');
   }, []);
 
@@ -482,10 +513,8 @@ export function usePracticeVideoCapture() {
    * Stop video capture
    */
   const stopVideo = useCallback(() => {
-    // Stop tracking first
     stopTracking();
 
-    // Stop video stream
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = videoRef.current.srcObject.getTracks();
       tracks.forEach(track => track.stop());
@@ -505,18 +534,15 @@ export function usePracticeVideoCapture() {
    * Get aggregate tracking metrics
    */
   const getTrackingMetrics = useCallback(() => {
-    // Calculate average attention score
     const avgAttention = attentionScoresRef.current.length > 0
       ? attentionScoresRef.current.reduce((sum, score) => sum + score, 0) / attentionScoresRef.current.length
       : 0;
 
-    // Calculate attention consistency (how much they looked at camera)
     const goodAttentionFrames = attentionScoresRef.current.filter(score => score > 60).length;
     const attentionPercentage = attentionScoresRef.current.length > 0
       ? (goodAttentionFrames / attentionScoresRef.current.length) * 100
       : 0;
 
-    // Get dominant emotion
     const emotionCounts = {};
     emotionDataRef.current.forEach(data => {
       emotionCounts[data.emotion] = (emotionCounts[data.emotion] || 0) + 1;
@@ -554,12 +580,22 @@ export function usePracticeVideoCapture() {
     attentionScoresRef.current = [];
     emotionDataRef.current = [];
     trackingStartTimeRef.current = null;
+    lastSentDataRef.current = null;
     setCurrentAttention({
       isLookingAtCamera: false,
       attentionScore: 0,
       gazeDirection: 'Center'
     });
     setCurrentEmotion({
+      emotion: 'Neutral',
+      confidence: 0
+    });
+    setOpponentAttention({
+      isLookingAtCamera: false,
+      attentionScore: 0,
+      gazeDirection: 'Center'
+    });
+    setOpponentEmotion({
       emotion: 'Neutral',
       confidence: 0
     });
@@ -570,6 +606,9 @@ export function usePracticeVideoCapture() {
   useEffect(() => {
     return () => {
       stopVideo();
+      if (sendIntervalRef.current) {
+        clearInterval(sendIntervalRef.current);
+      }
       if (faceLandmarkerRef.current) {
         faceLandmarkerRef.current.close();
       }
@@ -577,7 +616,7 @@ export function usePracticeVideoCapture() {
   }, [stopVideo]);
 
   return {
-    // Video refs (to be used by components)
+    // Video refs
     videoRef,
     canvasRef,
     
@@ -587,9 +626,13 @@ export function usePracticeVideoCapture() {
     videoError,
     faceLandmarker,
     
-    // Current real-time data
+    // Current player data
     currentAttention,
     currentEmotion,
+    
+    // Opponent data (received via WebSocket)
+    opponentAttention,
+    opponentEmotion,
     
     // Control functions
     startVideo,
@@ -599,6 +642,9 @@ export function usePracticeVideoCapture() {
     
     // Metrics
     getTrackingMetrics,
-    resetTracking
+    resetTracking,
+    
+    // WebSocket handler for opponent data
+    handleOpponentFacialData
   };
 }

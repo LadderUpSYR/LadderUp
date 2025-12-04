@@ -709,8 +709,8 @@ function TextPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
 
 /**
  * AudioPracticeMode Component
- * Audio-based practice mode with voice recording, transcription, and answer submission
- * Includes placeholder for future facial tracking integration
+ * Audio/video-based practice mode with voice recording, transcription, face tracking, and answer submission
+ * Integrates facial tracking for attention and emotion analysis
  */
 function AudioPracticeMode({ onBack, isDarkMode, toggleDarkMode }) {
     const [question, setQuestion] = useState("");

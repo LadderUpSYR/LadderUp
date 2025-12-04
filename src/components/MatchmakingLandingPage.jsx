@@ -133,7 +133,7 @@ const MatchmakingLandingPage = ({ onBack }) => {
   const isInQueue = status === 'queued' || status === 'connected';
   const canJoinQueue = status === 'idle' || status === 'disconnected';
 
-   return (
+  return (
     <div className={`min-h-screen relative transition-colors duration-500 ${
       isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>

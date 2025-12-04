@@ -104,6 +104,7 @@ def yaml_parser(question: Question, answer: str, player_uuid: str) -> str:
 
     Args:
         question (Question): The question object containing metadata.
+        answer (str): The candidate's answer to calculate length.
         player_uuid (str): The unique identifier for the player.
 
     Returns:
