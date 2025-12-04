@@ -22,6 +22,10 @@ export function useMatchRoom(matchId) {
     playerTranscript: "",
     opponentTranscript: "",
     opponentSpeaking: false,
+    // Grading results
+    playerResult: null,
+    opponentResult: null,
+    gradingMessage: null,
   });
 
   const wsRef = useRef(null);
@@ -116,11 +120,30 @@ export function useMatchRoom(matchId) {
             
           case "match_ending":
              // Handle match ending / grading phase
+             setRoomState((prev) => ({ 
+               ...prev, 
+               gradingMessage: data.message || "Grading your answers..." 
+             }));
              break;
 
           case "match_graded":
-             // Handle final results
-             setRoomState((prev) => ({ ...prev, status: "completed" }));
+             // Handle final results with detailed grading
+             console.log(">>> Match graded with results:", data.results);
+             setRoomState((prev) => {
+               const results = data.results || {};
+               const playerUid = prev.playerUid;
+               
+               // Determine opponent UID
+               const opponentUid = Object.keys(results).find(uid => uid !== playerUid);
+               
+               return { 
+                 ...prev, 
+                 status: "completed",
+                 playerResult: results[playerUid] || null,
+                 opponentResult: results[opponentUid] || null,
+                 gradingMessage: data.message || "Match completed!"
+               };
+             });
              break;
 
           case "transcription":
