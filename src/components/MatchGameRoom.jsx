@@ -17,7 +17,6 @@ export default function MatchGameRoom({ matchId, onExit }) {
   const { roomState, markReady, disconnect, wsRef, sendMessage } = useMatchRoom(matchId);
   const [isReadying, setIsReadying] = useState(false);
   const hasAutoReadied = useRef(false);  // Track if we've auto-readied
-  const [videoEnabled, setVideoEnabled] = useState(false);
   
   // Initialize audio capture with WebSocket ref from useMatchRoom
   const { isRecording, audioError, toggleRecording } = useAudioCapture(wsRef);
@@ -314,20 +313,8 @@ export default function MatchGameRoom({ matchId, onExit }) {
             </p>
           </div>
 
-          {/* Video Toggle & Recording Controls */}
-          <div className="mb-6 flex flex-wrap items-center justify-center gap-4">
-            <button
-              onClick={handleToggleVideo}
-              className={`px-6 py-3 rounded-full font-semibold transition transform hover:scale-105 flex items-center space-x-2 ${
-                videoEnabled
-                  ? "bg-purple-600 hover:bg-purple-700"
-                  : "bg-gray-600 hover:bg-gray-700"
-              }`}
-            >
-              <span className="text-xl">{videoEnabled ? "📹" : "📷"}</span>
-              <span>{videoEnabled ? "Video On" : "Enable Video"}</span>
-            </button>
-
+          {/* Recording Controls */}
+          <div className="mb-6 flex items-center justify-center space-x-4">
             <button
               onClick={toggleRecording}
               className={`px-8 py-4 rounded-full font-semibold text-lg transition transform hover:scale-105 flex items-center space-x-3 ${
@@ -347,123 +334,6 @@ export default function MatchGameRoom({ matchId, onExit }) {
               </span>
             )}
           </div>
-
-          {/* Video & Facial Tracking Section */}
-          {videoEnabled && (
-            <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Your Video Feed */}
-              <div className="bg-gray-800 rounded-xl p-4 shadow-xl">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-blue-300">Your Camera</h3>
-                  {isTracking && (
-                    <span className="flex items-center space-x-2">
-                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                      <span className="text-xs text-gray-400">Tracking</span>
-                    </span>
-                  )}
-                </div>
-                
-                <div className="relative rounded-lg overflow-hidden border-2 border-gray-700">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="hidden"
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    className="w-full h-auto"
-                    style={{ maxHeight: '300px' }}
-                  />
-                  
-                  {!isVideoReady && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                        <p className="text-white text-sm">Starting camera...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Your Attention Metrics */}
-                {isVideoReady && (
-                  <div className="mt-3 bg-gray-900 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-400">Attention Score</div>
-                        <div className="text-xs mt-1">
-                          {currentAttention.isLookingAtCamera ? (
-                            <span className="text-green-400">✓ Looking at camera</span>
-                          ) : (
-                            <span className="text-yellow-400">Looking {currentAttention.gazeDirection}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={`text-3xl font-bold ${
-                        currentAttention.attentionScore > 70 ? 'text-green-400' :
-                        currentAttention.attentionScore > 50 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {currentAttention.attentionScore.toFixed(0)}
-                        <span className="text-sm text-gray-500">/100</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Opponent's Metrics */}
-              <div className="bg-gray-800 rounded-xl p-4 shadow-xl">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-purple-300">Opponent's Attention</h3>
-                  {opponentAttention.attentionScore > 0 && (
-                    <span className="flex items-center space-x-2">
-                      <span className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-                      <span className="text-xs text-gray-400">Live</span>
-                    </span>
-                  )}
-                </div>
-
-                <div className="bg-gray-900 rounded-lg p-4 min-h-[150px] flex flex-col justify-center">
-                  {opponentAttention.attentionScore > 0 ? (
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400 mb-2">Attention Score</div>
-                      <div className={`text-4xl font-bold ${
-                        opponentAttention.attentionScore > 70 ? 'text-green-400' :
-                        opponentAttention.attentionScore > 50 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {opponentAttention.attentionScore.toFixed(0)}
-                        <span className="text-lg text-gray-500">/100</span>
-                      </div>
-                      <div className="text-sm mt-2">
-                        {opponentAttention.isLookingAtCamera ? (
-                          <span className="text-green-400">✓ Focused on camera</span>
-                        ) : (
-                          <span className="text-yellow-400">Looking {opponentAttention.gazeDirection}</span>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center text-gray-500">
-                      <div className="text-4xl mb-2">📹</div>
-                      <p className="text-sm">Opponent's attention data will appear here</p>
-                      <p className="text-xs mt-1">They need to enable video</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Video Error Display */}
-          {videoError && (
-            <div className="mb-6 bg-red-900 bg-opacity-50 border border-red-700 rounded-lg p-4">
-              <p className="text-red-300">
-                <strong>Video Error:</strong> {videoError}
-              </p>
-            </div>
-          )}
 
           {/* Audio Error Display */}
           {audioError && (

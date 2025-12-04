@@ -957,7 +957,6 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
     - signal: WebRTC signaling data
     - start_audio: Player started speaking
     - stop_audio: Player stopped speaking
-    - facial_tracking: Player's facial tracking data (attention, emotion)
     
     Args:
         match_id: The room ID
