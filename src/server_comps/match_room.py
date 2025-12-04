@@ -85,6 +85,10 @@ audio_buffers: Dict[str, list] = {}
 
 player_answers: Dict[str, List[str]] = {}
 
+# Attention metrics for each player
+# Key: f"{match_id}:{player_uid}", Value: dict with attention data
+player_attention_metrics: Dict[str, Dict] = {}
+
 # Active timers for match countdown
 active_timers: Dict[str, asyncio.Task] = {}
 
@@ -452,6 +456,7 @@ async def accumulate_transcription(match_id: str, player_uid: str, text: str):
 async def save_match_answers(match_id: str):
     """
     Called when match ends - compile, save, and grade all answers
+    Includes attention metrics from face tracking
     """
     print(f"Starting end-of-match grading for match {match_id}")
     
@@ -471,11 +476,18 @@ async def save_match_answers(match_id: str):
     for player_uid in players:
         key = f"{match_id}:{player_uid}"
         
+        # Get attention metrics if available
+        attention_data = player_attention_metrics.get(key, {})
+        attention_score = attention_data.get("averageAttentionScore", 0)
+        attention_percentage = attention_data.get("attentionPercentage", 0)
+        
         # Check if player has any transcriptions
         if key not in player_answers or not player_answers[key]:
             grading_results[player_uid] = {
                 "status": "no_answer",
-                "message": "No answer recorded"
+                "message": "No answer recorded",
+                "attentionScore": attention_score,
+                "attentionPercentage": attention_percentage
             }
             continue
         
@@ -492,13 +504,23 @@ async def save_match_answers(match_id: str):
                 player_uuid=player_uid
             )
             
+            # Calculate final score incorporating attention (optional weighting)
+            # Base score is 90% of answer quality, 10% bonus from attention
+            base_score = result['score']
+            attention_bonus = (attention_score / 100) * 1.0  # Up to 1 point bonus
+            final_score = min(10.0, base_score + attention_bonus)
+            
             grading_results[player_uid] = {
                 "status": "success",
-                "score": result['score'],
+                "score": round(final_score, 1),
+                "baseScore": base_score,
+                "attentionBonus": round(attention_bonus, 2),
                 "feedback": result.get('feedback', ''),
                 "strengths": result.get('strengths', []),
                 "improvements": result.get('improvements', []),
-                "word_count": word_count
+                "word_count": word_count,
+                "attentionScore": round(attention_score, 1),
+                "attentionPercentage": round(attention_percentage, 1)
             }
             
         except Exception as e:
@@ -506,10 +528,12 @@ async def save_match_answers(match_id: str):
             grading_results[player_uid] = {
                 "status": "error",
                 "message": f"Grading failed: {str(e)}",
-                "word_count": word_count
+                "word_count": word_count,
+                "attentionScore": attention_score,
+                "attentionPercentage": attention_percentage
             }
     
-    # --- NEW: SAVE RESULTS TO REDIS ---
+    # --- SAVE RESULTS TO REDIS ---
     # This ensures players who reconnect see the results
     room_key = f"{ROOM_PREFIX}{match_id}"
     await redis_client.hset(room_key, "grading_results", json.dumps(grading_results))
@@ -522,11 +546,13 @@ async def save_match_answers(match_id: str):
         "message": "Match completed and answers graded!"
     })
     
-    # Clean up answer buffers
+    # Clean up answer buffers and attention metrics
     for player_uid in players:
         key = f"{match_id}:{player_uid}"
         if key in player_answers:
             del player_answers[key]
+        if key in player_attention_metrics:
+            del player_attention_metrics[key]
     
     print(f"Completed grading for match {match_id}")
 
@@ -984,6 +1010,19 @@ async def handle_room_message(match_id: str, player_uid: str, data: dict):
             "player": player_uid,
             "speaking": False
         }, exclude_player=player_uid)
+    
+    elif message_type == "attention_metrics":
+        # Store attention metrics from face tracking
+        metrics = data.get("metrics", {})
+        key = f"{match_id}:{player_uid}"
+        
+        player_attention_metrics[key] = {
+            "averageAttentionScore": metrics.get("averageAttentionScore", 0),
+            "attentionPercentage": metrics.get("attentionPercentage", 0),
+            "trackingDuration": metrics.get("trackingDuration", 0)
+        }
+        
+        print(f"[{match_id}] Received attention metrics for {player_uid}: {player_attention_metrics[key]}")
     
     else:
         print(f"Unknown message type: {message_type}")

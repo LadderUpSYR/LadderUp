@@ -1,23 +1,44 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMatchRoom } from "./useMatchRoom";
 import { useAudioCapture } from "./useAudioCapture";
+import { usePracticeVideoCapture } from "./usePracticeVideoCapture";
 
 /**
  * MatchGameRoom Component
  * Displays the match room interface with:
  * - Waiting room (players ready up)
  * - Active match (question display, timer, audio recording, transcription)
- * - Match completion screen
+ * - Match completion screen with detailed feedback
+ * - Face tracking for attention scoring
  */
 export default function MatchGameRoom({ matchId, onExit }) {
     console.log("=== MatchGameRoom MOUNTED ===");
   console.log("Match ID:", matchId);
-  const { roomState, markReady, disconnect, wsRef } = useMatchRoom(matchId);
+  const { roomState, markReady, disconnect, wsRef, sendMessage } = useMatchRoom(matchId);
   const [isReadying, setIsReadying] = useState(false);
   const hasAutoReadied = useRef(false);  // Track if we've auto-readied
   
   // Initialize audio capture with WebSocket ref from useMatchRoom
   const { isRecording, audioError, toggleRecording } = useAudioCapture(wsRef);
+  
+  // Initialize face tracking for attention scoring
+  const {
+    videoRef,
+    canvasRef,
+    isVideoReady,
+    isTracking,
+    videoError,
+    currentAttention,
+    startVideo,
+    stopVideo,
+    startTracking,
+    stopTracking,
+    getTrackingMetrics,
+    resetTracking
+  } = usePracticeVideoCapture();
+
+  // Track previous status to detect status changes
+  const prevStatusRef = useRef(null);
 
     useEffect(() => {
     console.log("=== Room State Changed ===");
@@ -44,6 +65,46 @@ export default function MatchGameRoom({ matchId, onExit }) {
 
     autoReady();
   }, [roomState.status, roomState.isReady, markReady]);
+
+  // Start video and tracking when match becomes active
+  useEffect(() => {
+    if (roomState.status === "active" && prevStatusRef.current !== "active") {
+      console.log("Match active - starting video tracking...");
+      startVideo();
+    }
+    
+    // When match ends, send attention metrics and stop tracking
+    if (roomState.status === "completed" && prevStatusRef.current === "active") {
+      console.log("Match completed - sending attention metrics...");
+      const metrics = getTrackingMetrics();
+      console.log("Attention metrics:", metrics);
+      
+      // Send attention data to server
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        sendMessage({
+          type: "attention_metrics",
+          metrics: {
+            averageAttentionScore: metrics.averageAttentionScore,
+            attentionPercentage: metrics.attentionPercentage,
+            trackingDuration: metrics.trackingDuration
+          }
+        });
+      }
+      
+      stopTracking();
+      stopVideo();
+    }
+    
+    prevStatusRef.current = roomState.status;
+  }, [roomState.status, startVideo, stopVideo, startTracking, stopTracking, getTrackingMetrics, sendMessage, wsRef]);
+
+  // Start tracking once video is ready
+  useEffect(() => {
+    if (isVideoReady && roomState.status === "active" && !isTracking) {
+      console.log("Video ready - starting face tracking...");
+      startTracking();
+    }
+  }, [isVideoReady, roomState.status, isTracking, startTracking]);
 
   // Format time as MM:SS
   const formatTime = (seconds) => {
@@ -335,16 +396,115 @@ export default function MatchGameRoom({ matchId, onExit }) {
           </div>
 
           {/* Tips Section */}
-          <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-xl p-4">
+          <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-xl p-4 mb-6">
             <h4 className="font-semibold text-yellow-300 mb-2 flex items-center">
-              Tips
+              💡 Tips
             </h4>
             <ul className="text-sm text-gray-300 space-y-1">
               <li>• Click "Start Recording" to begin answering the question</li>
               <li>• Use the STAR method: Situation, Task, Action, Result</li>
               <li>• Keep your answer concise (aim for 1-2 minutes)</li>
               <li>• Speak clearly - your answer will be transcribed in real-time</li>
+              <li>• Look at the camera - your attention score affects your grade!</li>
             </ul>
+          </div>
+
+          {/* Face Tracking / Attention Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Video Preview */}
+            <div className="lg:col-span-2 bg-gray-800 rounded-xl p-4 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-300 flex items-center">
+                  <span className="mr-2">📹</span> Video Preview
+                </h3>
+                {isTracking && (
+                  <span className="flex items-center space-x-2 text-green-400">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span className="text-sm">Tracking Active</span>
+                  </span>
+                )}
+              </div>
+              
+              <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="hidden"
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="w-full h-auto max-h-[300px] object-contain"
+                />
+                
+                {!isVideoReady && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                      <p className="text-gray-400 text-sm">Initializing camera...</p>
+                    </div>
+                  </div>
+                )}
+                
+                {videoError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                    <div className="text-center p-4">
+                      <div className="text-yellow-500 text-3xl mb-2">⚠️</div>
+                      <p className="text-gray-400 text-sm">{videoError}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Attention Metrics */}
+            <div className="bg-gray-800 rounded-xl p-4 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-300 mb-4 flex items-center">
+                <span className="mr-2">👁️</span> Attention Score
+              </h3>
+              
+              {/* Current Attention Score */}
+              <div className="text-center mb-4">
+                <div className={`text-5xl font-bold mb-1 ${
+                  currentAttention.attentionScore > 70 ? 'text-green-400' :
+                  currentAttention.attentionScore > 40 ? 'text-yellow-400' : 'text-red-400'
+                }`}>
+                  {currentAttention.attentionScore.toFixed(0)}%
+                </div>
+                <div className="text-sm text-gray-400">
+                  {currentAttention.isLookingAtCamera ? '✓ Looking at camera' : '✗ Look at camera'}
+                </div>
+              </div>
+
+              {/* Attention Bar */}
+              <div className="mb-4">
+                <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      currentAttention.attentionScore > 70 ? 'bg-green-500' :
+                      currentAttention.attentionScore > 40 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${currentAttention.attentionScore}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Gaze Direction */}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Gaze Direction</span>
+                  <span className="text-blue-400 font-mono">{currentAttention.gazeDirection}</span>
+                </div>
+              </div>
+
+              {/* Tip */}
+              <div className="mt-4 p-2 bg-gray-900 rounded-lg">
+                <p className="text-xs text-gray-500 text-center">
+                  💡 Maintaining eye contact improves your score!
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -353,32 +513,188 @@ export default function MatchGameRoom({ matchId, onExit }) {
 
   // Match Completed
   if (roomState.status === "completed") {
+    const playerResult = roomState.playerResult;
+    const opponentResult = roomState.opponentResult;
+    
+    // Helper function to render score with color
+    const getScoreColor = (score) => {
+      if (score >= 8) return "text-green-600";
+      if (score >= 6) return "text-blue-600";
+      if (score >= 4) return "text-yellow-600";
+      return "text-red-600";
+    };
+
+    const getScoreBgColor = (score) => {
+      if (score >= 8) return "bg-green-100 border-green-300";
+      if (score >= 6) return "bg-blue-100 border-blue-300";
+      if (score >= 4) return "bg-yellow-100 border-yellow-300";
+      return "bg-red-100 border-red-300";
+    };
+
+    // Determine winner
+    const playerScore = playerResult?.score || 0;
+    const opponentScore = opponentResult?.score || 0;
+    const isWinner = playerScore > opponentScore;
+    const isTie = playerScore === opponentScore;
+
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-green-50 to-teal-100">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4">
-          <div className="text-center mb-6">
-            <div className="text-6xl mb-4">🎉</div>
+      <div className="min-h-screen w-full bg-gradient-to-br from-green-50 via-teal-50 to-blue-50 py-8 px-4">
+        <div className="max-w-5xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4">
+              {isWinner ? "�" : isTie ? "🤝" : "💪"}
+            </div>
             <h2 className="text-3xl font-bold text-gray-800 mb-2">
               Match Complete!
             </h2>
-            <p className="text-gray-600 mb-6">
-              Great job! You've completed your interview practice session.
+            <p className="text-gray-600">
+              {isWinner 
+                ? "Congratulations! You won this round!" 
+                : isTie 
+                ? "It's a tie! Great performance from both players!" 
+                : "Good effort! Keep practicing to improve!"}
             </p>
           </div>
 
+          {/* Score Comparison */}
+          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Score Comparison</h3>
+            <div className="grid grid-cols-3 gap-4 items-center">
+              {/* Your Score */}
+              <div className={`text-center p-4 rounded-xl border-2 ${getScoreBgColor(playerScore)}`}>
+                <div className="text-sm text-gray-600 mb-1">You</div>
+                <div className={`text-4xl font-bold ${getScoreColor(playerScore)}`}>
+                  {playerScore?.toFixed(1) || "N/A"}
+                </div>
+                <div className="text-xs text-gray-500">out of 10</div>
+              </div>
+
+              {/* VS */}
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-400">VS</div>
+              </div>
+
+              {/* Opponent Score */}
+              <div className={`text-center p-4 rounded-xl border-2 ${getScoreBgColor(opponentScore)}`}>
+                <div className="text-sm text-gray-600 mb-1">Opponent</div>
+                <div className={`text-4xl font-bold ${getScoreColor(opponentScore)}`}>
+                  {opponentScore?.toFixed(1) || "N/A"}
+                </div>
+                <div className="text-xs text-gray-500">out of 10</div>
+              </div>
+            </div>
+
+            {/* Attention Score Display */}
+            {(playerResult?.attentionScore !== undefined || opponentResult?.attentionScore !== undefined) && (
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-600 mb-3 text-center">👁️ Attention Scores</h4>
+                <div className="grid grid-cols-3 gap-4 items-center">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-600">
+                      {playerResult?.attentionScore?.toFixed(0) || "N/A"}%
+                    </div>
+                    <div className="text-xs text-gray-500">Your Focus</div>
+                  </div>
+                  <div></div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-600">
+                      {opponentResult?.attentionScore?.toFixed(0) || "N/A"}%
+                    </div>
+                    <div className="text-xs text-gray-500">Opponent Focus</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Your Detailed Feedback */}
+          {playerResult && playerResult.status !== "no_answer" && (
+            <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+              <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center">
+                <span className="mr-2">📝</span> Your Feedback
+              </h3>
+              
+              {/* Overall Feedback */}
+              <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  {playerResult.feedback || "No feedback available"}
+                </p>
+              </div>
+
+              {/* Strengths */}
+              {playerResult.strengths && playerResult.strengths.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="font-semibold text-green-700 mb-2 flex items-center">
+                    <span className="mr-2">✅</span> Strengths
+                  </h4>
+                  <ul className="space-y-2">
+                    {playerResult.strengths.map((strength, index) => (
+                      <li key={index} className="flex items-start">
+                        <span className="text-green-500 mr-2">•</span>
+                        <span className="text-gray-700">{strength}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Areas for Improvement */}
+              {playerResult.improvements && playerResult.improvements.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-orange-700 mb-2 flex items-center">
+                    <span className="mr-2">💡</span> Areas for Improvement
+                  </h4>
+                  <ul className="space-y-2">
+                    {playerResult.improvements.map((improvement, index) => (
+                      <li key={index} className="flex items-start">
+                        <span className="text-orange-500 mr-2">•</span>
+                        <span className="text-gray-700">{improvement}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Word Count */}
+              {playerResult.word_count && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <span className="text-sm text-gray-500">
+                    Word count: {playerResult.word_count} words
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* No Answer Message */}
+          {playerResult && playerResult.status === "no_answer" && (
+            <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+              <div className="text-center text-gray-600">
+                <div className="text-4xl mb-3">🎤</div>
+                <p>No answer was recorded for your response.</p>
+                <p className="text-sm mt-2">Make sure to click "Start Recording" and speak clearly during the match.</p>
+              </div>
+            </div>
+          )}
+
           {/* Final Transcripts */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-800 mb-2">Your Answer</h3>
-              <div className="bg-white rounded p-3 max-h-[200px] overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <h3 className="font-semibold text-blue-800 mb-2 flex items-center">
+                <span className="mr-2">🗣️</span> Your Answer
+              </h3>
+              <div className="bg-blue-50 rounded-lg p-3 max-h-[200px] overflow-y-auto">
                 <p className="text-sm text-gray-700">
                   {roomState.playerTranscript || "No transcription recorded"}
                 </p>
               </div>
             </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <h3 className="font-semibold text-purple-800 mb-2">Opponent's Answer</h3>
-              <div className="bg-white rounded p-3 max-h-[200px] overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-lg p-4">
+              <h3 className="font-semibold text-purple-800 mb-2 flex items-center">
+                <span className="mr-2">🗣️</span> Opponent's Answer
+              </h3>
+              <div className="bg-purple-50 rounded-lg p-3 max-h-[200px] overflow-y-auto">
                 <p className="text-sm text-gray-700">
                   {roomState.opponentTranscript || "No transcription recorded"}
                 </p>
@@ -386,27 +702,24 @@ export default function MatchGameRoom({ matchId, onExit }) {
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-600 text-center">
-              Detailed feedback and analytics will be available in a future update.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={handleExit}
-              className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
-            >
-              Return to Profile
-            </button>
-            <button
-              onClick={() => {
-                window.location.href = "/matchmaking";
-              }}
-              className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
-            >
-              Find Another Match
-            </button>
+          {/* Action Buttons */}
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            <div className="space-y-3">
+              <button
+                onClick={handleExit}
+                className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
+              >
+                Return to Profile
+              </button>
+              <button
+                onClick={() => {
+                  window.location.href = "/matchmaking";
+                }}
+                className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
+              >
+                Find Another Match
+              </button>
+            </div>
           </div>
         </div>
       </div>
