@@ -19,7 +19,7 @@ import redis.asyncio as redis
 from redis.exceptions import RedisError
 from typing import Dict, Optional
 
-from src.server_comps.database import db, redis_client, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS, get_session
+from src.server_comps.database import db, redis_client, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS, get_session, delete_session
 
 #singleton class managers
 
@@ -73,7 +73,7 @@ async def practice_stt_websocket(websocket: WebSocket):
 @app.get("/health")
 def health():
     return {"ok": True}
-    
+
 @app.post("/api/auth/login")
 async def login(data: dict):
     result = await auth_manager.login(data)
