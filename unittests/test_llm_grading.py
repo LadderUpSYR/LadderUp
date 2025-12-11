@@ -8,7 +8,17 @@ import os
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.server_comps.llm_grading import InterviewGrader
+# Import the base class and factory function
+from src.server_comps.llm_grading import InterviewGrader, get_grader, GeminiGrader
+
+
+class MockQuestion:
+    """Mock Question object for testing"""
+    def __init__(self, text: str, answer_criteria: str = None, metadata_yaml: str = None):
+        self.text = text
+        self.answer_criteria = answer_criteria
+        self.metadata_yaml = metadata_yaml
+
 
 def test_basic_grading():
     """Test basic grading functionality"""
@@ -17,8 +27,17 @@ def test_basic_grading():
     print("=" * 60)
     
     try:
-        grader = InterviewGrader()
-        print("✓ Grader initialized successfully\n")
+        # Test factory function (preferred way to get grader)
+        grader = get_grader()
+        print(f"✓ Grader initialized successfully via get_grader()")
+        print(f"  Provider: {grader.provider_name}")
+        print(f"  Model: {grader.model_name}\n")
+        
+        # Verify it's the right type
+        assert isinstance(grader, InterviewGrader), "Grader should be an InterviewGrader"
+        assert isinstance(grader, GeminiGrader), "Default grader should be GeminiGrader"
+        print("✓ Type verification passed\n")
+        
     except ValueError as e:
         print(f"✗ Error: {e}")
         print("\nMake sure GEMINI_API_KEY is set in your .env file")
@@ -27,7 +46,7 @@ def test_basic_grading():
     # Test case 1: Good answer
     print("Test Case 1: Good Answer")
     print("-" * 60)
-    question1 = "Tell me about a time when you had to work with a difficult team member."
+    question1 = MockQuestion("Tell me about a time when you had to work with a difficult team member.")
     answer1 = """In my previous role as a software developer, I worked with a team member 
     who was resistant to code reviews and often pushed untested code. I scheduled a private 
     conversation where I explained how code reviews benefit the entire team and reduce bugs. 
@@ -37,7 +56,7 @@ def test_basic_grading():
     
     result1 = grader.grade_answer(question1, answer1)
     
-    print(f"Question: {question1}")
+    print(f"Question: {question1.text}")
     print(f"\nAnswer: {answer1}")
     print(f"\nScore: {result1['score']}/10")
     print(f"\nFeedback: {result1['feedback']}")
@@ -53,12 +72,12 @@ def test_basic_grading():
     # Test case 2: Poor answer
     print("\nTest Case 2: Weak Answer")
     print("-" * 60)
-    question2 = "Describe a challenging project you completed."
+    question2 = MockQuestion("Describe a challenging project you completed.")
     answer2 = "I worked on a project and it was hard but I finished it."
     
     result2 = grader.grade_answer(question2, answer2)
     
-    print(f"Question: {question2}")
+    print(f"Question: {question2.text}")
     print(f"\nAnswer: {answer2}")
     print(f"\nScore: {result2['score']}/10")
     print(f"\nFeedback: {result2['feedback']}")
@@ -74,17 +93,19 @@ def test_basic_grading():
     # Test case 3: With criteria
     print("\nTest Case 3: Grading with STAR Criteria")
     print("-" * 60)
-    question3 = "Tell me about a time you demonstrated leadership."
+    question3 = MockQuestion(
+        "Tell me about a time you demonstrated leadership.",
+        answer_criteria="Answer should follow STAR method: Situation, Task, Action, Result"
+    )
     answer3 = """During a critical product launch, our project manager fell ill. I stepped up 
     to coordinate the team. I organized daily standups, delegated tasks based on team members' 
     strengths, and maintained communication with stakeholders. We successfully launched on time, 
     and the product exceeded first-month sales targets by 25%."""
-    criteria3 = "Answer should follow STAR method: Situation, Task, Action, Result"
     
-    result3 = grader.grade_answer(question3, answer3, criteria3)
+    result3 = grader.grade_answer(question3, answer3)
     
-    print(f"Question: {question3}")
-    print(f"\nCriteria: {criteria3}")
+    print(f"Question: {question3.text}")
+    print(f"\nCriteria: {question3.answer_criteria}")
     print(f"\nAnswer: {answer3}")
     print(f"\nScore: {result3['score']}/10")
     print(f"\nFeedback: {result3['feedback']}")
