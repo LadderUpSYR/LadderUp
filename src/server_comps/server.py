@@ -55,15 +55,12 @@ from .practice_stt_fastapi import practice_stt_websocket_handler
 # Polymorphic Logging Base Class
 
 from abc import ABC, abstractmethod
-
-# interface
 class LoggableEvent(ABC):
     @abstractmethod
     def log(self, request: Optional[Request] = None, uuid: Optional[str] = None):
         # define at every new level
         pass
     # no dataum needed
-    # 
 
 @app.websocket("/ws/practice")
 async def practice_stt_websocket(websocket: WebSocket):
@@ -116,7 +113,6 @@ async def signup(data: SignupRequest):
         # We convert the Pydantic model to a dict for the manager
         result = await auth_manager.signup(data.dict())
 
-        # 3. Handle Response & Cookies
         response = JSONResponse(result)
         
         response.set_cookie(
@@ -188,9 +184,8 @@ class LogoutRequest(BaseModel, LoggableEvent):
             ip_address = forwarded.split(",")[0] if forwarded else request.client.host
             user_agent = request.headers.get("User-Agent", "unknown")
 
-        # Build the JSON Payload
+        # Build the JSON Payload To Log
         log_payload = {
-            # REQUIRED for GCP to color-code the log blue/green
             "severity": "INFO", 
             "event": "user_logout", 
             "email": self.email,
@@ -246,8 +241,6 @@ async def me(request: Request, data: AuthCheckRequest = Depends()):
     if not session_data:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
-    # Optional: check expiration
-    # FIX 2: Replaced datetime.utcnow() with timezone-aware datetime.now(timezone.utc)
     if float(session_data["expires"]) < datetime.now(timezone.utc).timestamp():
         await delete_session(session_token)
         raise HTTPException(status_code=401, detail="Session expired")

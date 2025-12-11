@@ -1,8 +1,6 @@
 from fastapi import HTTPException
 import random
 from typing import Dict, Any
-
-# --- FIX: IMPORT FROM DATABASE.PY ---
 from src.server_comps.database import db
 
 class QuestionManager:
